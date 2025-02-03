@@ -1,0 +1,43 @@
+name: agenda_headset_algorithm_env  
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Core Python version
+  - python=3.11  # Ensure compatibility with Snakemake & ML frameworks
+
+  # Workflow Management
+  - snakemake  # For reproducible data pipelines
+  - dvc  # Data Version Control for tracking datasets
+  - git  # Version control
+
+  # EEG Processing
+  - mne  # EEG signal processing
+  - h5py  # Handling HDF5 files
+  - pandas  # Data manipulation
+  - numpy  # Numerical operations
+  - scipy  # Scientific computing
+
+  # Machine Learning
+  - tensorflow=2.15  # Deep learning framework (GPU-supported version available)
+  - pytorch  # Alternative deep learning framework
+  - scikit-learn  # Machine learning utilities
+  - keras  # High-level deep learning API
+
+  # Visualization & Notebooks
+  - jupyterlab  # Interactive development environment
+  - matplotlib  # Plotting
+  - seaborn  # Statistical data visualization
+
+  # Documentation Tools
+  - pip
+  - pip:
+      - sphinx  # Documentation generator
+      - sphinx-rtd-theme  # ReadTheDocs theme
+      - myst-parser  # Support for Markdown in Sphinx
+
+  # Utilities
+  - tqdm  # Progress bars
+  - yaml  # YAML file handling
+  - requests  # HTTP requests handling

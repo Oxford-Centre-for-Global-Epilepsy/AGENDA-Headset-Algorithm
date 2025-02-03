@@ -1,0 +1,9 @@
+rule example_rule:
+    input:
+        "data/input_file.txt"
+    output:
+        "results/output_file.txt"
+    conda:
+        "workflow/envs/snakemake_env.yaml"
+    shell:
+        "python scripts/example_script.py {input} {output}"
