@@ -2,54 +2,87 @@
 
 🚀 Development of EEG-based classification models for epilepsy diagnosis as part of Workstream 2 of the AGENDA project. Initial algorithm work focuses on fine-tuning EEGNet for EEG-based classification using Snakemake and DVC for reproducible data preprocessing and model training.
 
----
+
 
 ## 📌 Project Overview
 This project fine-tunes EEGNet, a compact convolutional neural network for EEG data classification. The goal is to classify EEG recordings as neurotypical, epileptic (generalized or focal), or abnormal.
 
 ### 🛠 Features
 ✅ EEGNet Architecture - Pre-trained and fine-tuned for EEG classification.
+
 ✅ DVC (Data Version Control) - Efficient data tracking and storage.
+
 ✅ Snakemake Workflow - Fully automated pipeline for data preprocessing and model training.
+
 ✅ Multi-Site Generalization - Supports EEG data from multiple recording sites.
 
----
 
 ## 📂 Project Structure
-`
+
 project-root/
+
 ├── data/                # DVC-managed EEG data
+
 │   ├── raw/             # Original EEG files (e.g., .edf, .hdf5)
+
 │   ├── processed/       # Preprocessed EEG data
+
 │   └── external/        # External datasets
+
 ├── notebooks/           # Jupyter notebooks for data exploration
+
 ├── src/                 # Source code for the project
+
 │   ├── data/            # Data preprocessing scripts
+
 │   ├── models/          # EEGNet model definition & modifications
+
 │   ├── training/        # Fine-tuning & training scripts
+
 │   └── evaluation/      # Model evaluation scripts
+
 ├── scripts/             # Utility scripts for data processing
+
 ├── workflow/            # Snakemake pipeline
+
 │   ├── Snakefile        # Main workflow file
+
 │   ├── rules/           # Modular Snakemake rules
+
 │   ├── envs/            # Conda environments for each rule
+
 ├── results/             # Outputs: trained models, logs, reports
+
 ├── tests/               # Unit tests
+
 ├── docs/                # Documentation
+
 │   ├── installation.md
+
 │   ├── data_preprocessing.md
+
 │   ├── model_training.md
+
 │   ├── evaluation.md
+
 │   ├── dvc_setup.md
+
 │   ├── contributing.md
+
 │   ├── references.md
+
 │   └── changelog.md
+
 ├── environment.yml      # Conda environment file
+
 ├── dvc.yaml             # DVC pipeline
+
 ├── params.yaml          # Hyperparameter configurations
+
 ├── .gitignore           # Ignore large files & temporary logs
+
 └── README.md            # This file
-`
+
 ---
 
 ## 🛠 Installation Guide
