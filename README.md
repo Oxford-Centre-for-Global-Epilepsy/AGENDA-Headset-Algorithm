@@ -18,7 +18,7 @@ This project fine-tunes EEGNet, a compact convolutional neural network for EEG d
 
 
 ## 📂 Project Structure
-
+```graphql
 project-root/
 ├── data/                # DVC-managed EEG data
 │   ├── raw/             # Original EEG files (e.g., .edf, .hdf5)
@@ -51,7 +51,7 @@ project-root/
 ├── params.yaml          # Hyperparameter configurations
 ├── .gitignore           # Ignore large files & temporary logs
 └── README.md            # This file
-
+```
 
 ## 🛠 Installation Guide
 
