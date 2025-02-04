@@ -56,65 +56,60 @@ project-root/
 ## 🛠 Installation Guide
 
 ### 1️⃣ Clone the Repository
-`
+```bash
 git clone https://github.com/yourusername/yourproject.git
-
 cd yourproject
-`
+```
 
 ### 2️⃣ Set Up Conda Environment
-`
+```bash
 conda env create -f environment.yml
-
 conda activate eegnet_project
-`
+```
 
 ### 3️⃣ Configure DVC (Data Version Control)
-`
+```bash
 dvc pull  # Pull dataset from remote storage
-`
+```
 
-_(Ensure dvc is properly configured; see docs/dvc_setup.md)_
+_(Ensure dvc is properly configured; see [docs/dvc_setup.md](docs/dvc_setup.md))_
 
 ### 4️⃣ Install Additional Dependencies (if needed)
-`
+```bash
 pip install -r requirements.txt
-`
+```
 
 
 ## 🚀 Usage
 
 ### 1️⃣ Preprocess EEG Data
-`
+```bash
 snakemake --cores 4 --use-conda
-`
+```
 
 _(Processes raw EEG data and prepares it for training.)_
 
 ### 2️⃣ Train & Fine-Tune EEGNet
-`
+```bash
 python src/training/train.py --epochs 50 --batch_size 32
-`
+```
 
 _(Fine-tunes EEGNet on preprocessed EEG data.)_ 
 
 ### 3️⃣ Evaluate Model Performance
-`
+```bash
 python src/evaluation/evaluate.py --model results/eegnet_model.pth
-`
+```
 
 _(Generates accuracy, loss, confusion matrix, and ROC curves.)_
 
 ### 4️⃣ Version Control for Data
-`
+```bash
 dvc add data/processed/
-
 git add data/processed.dvc
-
 git commit -m "Updated processed EEG data"
-
 dvc push
-`
+```
 _(Ensures reproducibility by tracking data changes.)_
 
 
@@ -166,7 +161,7 @@ See [docs/changelog.md](docs/changelog.md) for version updates.
 - 📌 Integrate attention mechanisms to enhance feature learning.
 - 📌 Deploy the trained model for real-time EEG analysis.
 
----
+-
 
 🔹 __Author__: John E. Fleming
 
@@ -174,7 +169,8 @@ See [docs/changelog.md](docs/changelog.md) for version updates.
 
 🔹 __Contact__: john.fleming@ndcn.ox.ac.uk
 
+-
 
 🚀 Happy Coding & Good Luck! 🎉
 
----
+-
