@@ -1,0 +1,3 @@
+data_raw: "$DATA/AGENDA-Headset-Algorithm/data/raw"
+data_edf: "$DATA/AGENDA-Headset-Algorithm/data/edf"
+converter: "$DATA/AGENDA-Headset-Algorithm/tools/nk2edf"
