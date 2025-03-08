@@ -1,0 +1,2 @@
+dataset_name: "EEG"
+chunk_size: 50        # Store the data in batches of 50 epochs to optimize performance

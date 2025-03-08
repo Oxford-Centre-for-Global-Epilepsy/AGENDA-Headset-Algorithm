@@ -8,6 +8,9 @@ configfile: "config/config.yaml"
 include: "rules/bandpass_filter_data.smk"
 include: "rules/resample_data.smk"
 include: "rules/convert_to_bipolar_montage.smk"
+include: "rules/epoch_data.smk"
+include: "rules/normalise_data_epochs.smk"
+include: "rules/convert_to_hdf5.smk"
 
 import os
 
@@ -18,6 +21,7 @@ if not DATA_PATH:
 
 data_edf = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/edf"
 data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
+data_hdf5 = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/hdf5"
 
 # =================================================
 # 🔎 Discover Raw Data EEG Files (in .edf format)
@@ -47,4 +51,8 @@ MONTAGES = ["19_channel"]
 rule all:
     input:
         #expand(data_fif + "/{sample}_resampled.fif", sample=EDF_FILEPATHS)
-        expand(data_fif + "/{sample}_bipolar_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+        #expand(data_fif + "/{sample}_bipolar_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+        #expand(data_fif + "/{sample}_epoched_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+        #expand(data_fif + "/{sample}_normalised_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+        expand(data_hdf5 + "/{sample}_normalised_{montage}.h5", sample=EDF_FILEPATHS, montage=MONTAGES)
+       

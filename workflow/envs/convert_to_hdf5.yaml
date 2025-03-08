@@ -1,0 +1,14 @@
+name: convert_to_hdf5_env  
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Core Python version
+  - python=3.11  # Ensure compatibility with Snakemake & ML frameworks
+  - pandas
+  - numpy
+  - matplotlib
+  - mne
+  - PyYAML
+  - h5py

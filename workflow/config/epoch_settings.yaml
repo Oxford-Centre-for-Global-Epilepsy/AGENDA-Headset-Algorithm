@@ -1,0 +1,3 @@
+window_duration: 1.0  # Window length in seconds
+overlap: 0            # Overlap percentage (e.g., 0.5 for 50% overlap)
+baseline: [0, 0]   # Apply baseline correction (None means automatic)
