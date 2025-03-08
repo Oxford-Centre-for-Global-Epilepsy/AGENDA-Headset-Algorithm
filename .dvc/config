@@ -1,0 +1,3 @@
+[cache]
+    dir = /home/ndcn1133/.dvc/cache
+    type = "reflink,copy"

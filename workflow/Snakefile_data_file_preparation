@@ -1,10 +1,10 @@
-# =======================
-# 🏆 Main Workflow Entry
-# =======================
+# ========================================================================
+# 🏆 Data File Preparation Workflow Entry
+#
+#   Workflow Purpose: Convert raw data files to common file format (.edf)
+# ========================================================================
 include: "rules/convert_data_to_edf.smk"
 include: "rules/move_edf_files.smk"
-include: "rules/resample_edf_file.smk"
-include: "rules/convert_to_bipolar_montage.smk"
 
 import os
 
@@ -17,7 +17,6 @@ if not DATA_PATH:
 
 data_raw = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/raw"
 data_edf = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/edf"
-data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
 
 # =======================
 # 🔎 Discover Files
@@ -44,14 +43,9 @@ print(f"✅ Nihon Kohden EEG files found: {NK_EEG_FILEPATHS}")
 print(f"✅ Existing .EDF files found: {EXISTING_EDF_FILEPATHS}")
 print(f"✅ All .EDF files for processing: {EDF_FILEPATHS}")
 
-# Specify the spatial montages to use for the data
-MONTAGES = ["19_channel"]
-
 # =======================
 # 🏁 Define rule all
 # =======================
 rule all:
     input:
-        #expand(data_edf + "/{sample}.edf", sample=EDF_FILEPATHS)
-        #expand(data_fif + "/{sample}_resampled.fif", sample=EDF_FILEPATHS)
-        expand(data_fif + "/{sample}_bipolar_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+        expand(data_edf + "/{sample}.edf", sample=EDF_FILEPATHS)

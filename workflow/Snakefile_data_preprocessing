@@ -1,8 +1,8 @@
 # =======================
 # 🏆 Main Workflow Entry
-# =======================
-include: "rules/convert_data_to_edf.smk"
-include: "rules/move_edf_files.smk"
+#
+#   Workflow Purpose: Preprocess the EEG data files in preparation for algorithm training
+# ========================================================================
 include: "rules/resample_edf_file.smk"
 include: "rules/convert_to_bipolar_montage.smk"
 
@@ -15,7 +15,6 @@ DATA_PATH = os.getenv("DATA")
 if not DATA_PATH:
     raise ValueError("ERROR: The $DATA environment variable is not set!")
 
-data_raw = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/raw"
 data_edf = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/edf"
 data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
 
@@ -33,15 +32,9 @@ def discover_eeg_files(file_extension=".EEG"):
                 eeg_files.append(relative_path.replace(file_extension, ""))
     return eeg_files
 
-# Define the file paths
-NK_EEG_FILEPATHS = discover_eeg_files(file_extension=".EEG")
-EXISTING_EDF_FILEPATHS = discover_eeg_files(file_extension=".edf")
+# 🏆 ** Get list of the file paths to the EEG data (in .edf format) **
+EDF_FILEPATHS = discover_eeg_files(file_extension=".edf")
 
-# 🏆 **Final list includes both converted & pre-existing .edf files**
-EDF_FILEPATHS = NK_EEG_FILEPATHS + EXISTING_EDF_FILEPATHS
-
-print(f"✅ Nihon Kohden EEG files found: {NK_EEG_FILEPATHS}")
-print(f"✅ Existing .EDF files found: {EXISTING_EDF_FILEPATHS}")
 print(f"✅ All .EDF files for processing: {EDF_FILEPATHS}")
 
 # Specify the spatial montages to use for the data
@@ -52,6 +45,5 @@ MONTAGES = ["19_channel"]
 # =======================
 rule all:
     input:
-        #expand(data_edf + "/{sample}.edf", sample=EDF_FILEPATHS)
         #expand(data_fif + "/{sample}_resampled.fif", sample=EDF_FILEPATHS)
         expand(data_fif + "/{sample}_bipolar_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)

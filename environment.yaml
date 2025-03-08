@@ -11,3 +11,4 @@ dependencies:
   - snakemake  # For reproducible data pipelines
   - dvc  # Data Version Control for tracking datasets
   - git  # Version control
+  - rclone # Remote Data Storage (needed for using OneDrive as remote storage)

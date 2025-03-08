@@ -1,3 +1,4 @@
 data_raw: "$DATA/AGENDA-Headset-Algorithm/data/raw"
 data_edf: "$DATA/AGENDA-Headset-Algorithm/data/edf"
+data_fif: "$DATA/AGENDA-Headset-Algorithm/data/fif"
 converter: "$DATA/AGENDA-Headset-Algorithm/tools/nk2edf"
