@@ -41,9 +41,10 @@ def convert_to_bipolar(raw, spatial_config):
     # Ensure channel names are case-insensitive
     ch_names_lower = {ch_name.lower(): ch_name for ch_name in raw.ch_names}
 
-    # Initialize lists to keep track of channels to drop later
-    channels_to_drop = []
+    # List to store newly created bipolar channel names
+    bipolar_channel_names = []
 
+    # Create bipolar montage
     for anode, cathode in zip(anodes_flat, cathodes_flat):
         anode_lower = anode.lower()
         cathode_lower = cathode.lower()
@@ -63,8 +64,8 @@ def convert_to_bipolar(raw, spatial_config):
                 copy=False
             )
 
-            # Add original channels to the drop list
-            channels_to_drop.extend([anode_actual, cathode_actual])
+            # Store the bipolar channel name
+            bipolar_channel_names.append(bipolar_name)
         else:
             missing_channels = []
             if anode_lower not in ch_names_lower:
@@ -73,8 +74,8 @@ def convert_to_bipolar(raw, spatial_config):
                 missing_channels.append(cathode)
             print(f"Warning: Channels {missing_channels} not found in data. Skipping this pair.")
 
-    # Drop original monopolar channels
-    raw.drop_channels(channels_to_drop)
+    # Drop all channels except the new bipolar ones
+    raw.pick_channels(bipolar_channel_names)
 
     return raw
 
