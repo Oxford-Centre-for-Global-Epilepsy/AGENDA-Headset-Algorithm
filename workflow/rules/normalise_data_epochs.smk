@@ -9,9 +9,9 @@ data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
 # =======================
 rule normalise_epoched_data:
     input:
-        fif = data_fif + "/{sample}_epoched_{montage}.fif"
+        fif = data_fif + "/{montage}/{sample}_epoched.fif"
     output:
-        fif = data_fif + "/{sample}_normalised_{montage}.fif"
+        fif = data_fif + "/{montage}/{sample}_normalised.fif"
     params:
         script="scripts/normalise_epoched_data.py"
     conda:

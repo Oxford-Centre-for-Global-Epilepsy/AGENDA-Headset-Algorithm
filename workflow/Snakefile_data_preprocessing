@@ -12,10 +12,14 @@ include: "rules/convert_to_bipolar_montage.smk"
 include: "rules/epoch_data.smk"
 include: "rules/normalise_data_epochs.smk"
 include: "rules/convert_to_hdf5.smk"
-include: "rules/make_tensor.smk"
+#include: "rules/prepare_tensor.smk"
 
-ruleorder: bandpass_filter_data > resample_data > convert_to_bipolar > epoch_data > normalise_epoched_data > convert_to_hdf5 > make_tensor
+# Define the order of the rules
+#ruleorder: bandpass_filter_data > resample_data > convert_to_bipolar > epoch_data > normalise_epoched_data > convert_to_hdf5 > prepare_tensor
+ruleorder: bandpass_filter_data > resample_data > convert_to_bipolar > epoch_data > normalise_epoched_data > convert_to_hdf5
 
+# ✅ Import `expand` for rule all
+#from snakemake.utils import expand
 import os
 
 # 🔥 Get $DATA environment variable (ensure it's set)
@@ -26,7 +30,6 @@ if not DATA_PATH:
 data_edf = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/edf"
 data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
 data_hdf5 = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/hdf5"
-data_tensors = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/tensors"
 
 # =================================================
 # 🔎 Discover Raw Data EEG Files (in .edf format)
@@ -48,17 +51,26 @@ EDF_FILEPATHS = discover_eeg_files(data_folder=data_edf, file_extension=".edf")
 print(f"✅ All .EDF files for processing: {EDF_FILEPATHS}")
 
 # Specify the spatial montages to use for the data
-MONTAGES = ["19_channel"]
+MONTAGES = ["19_channel", "17_channel_no_A1_A2"]
+
+# Make a wildcard constraint for the available montages
+wildcard_constraints:
+    montage="19_channel|17_channel_no_A1_A2|17_channel_no_T3_T4|16_channel"
 
 # =======================
 # 🏁 Define rule all
 # =======================
 rule all:
     input:
-        #expand(data_fif + "/{sample}_resampled.fif", sample=EDF_FILEPATHS)
-        #expand(data_fif + "/{sample}_bipolar_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
-        #expand(data_fif + "/{sample}_epoched_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
-        #expand(data_fif + "/{sample}_normalised_{montage}.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
-        #expand(data_hdf5 + "/{sample}_normalised_{montage}.h5", sample=EDF_FILEPATHS, montage=MONTAGES)
-        expand(data_tensors + "/{sample}_normalised_{montage}.h5", sample=EDF_FILEPATHS, montage=MONTAGES)
+        # Ensure all HDF5 files are created
+        expand(data_hdf5 + "/{montage}/{sample}.h5", sample=EDF_FILEPATHS, montage=MONTAGES),
        
+        # Ensure all tensors are processed
+        #expand(data_hdf5 + "/{montage}/{sample}_tensor.done", sample=EDF_FILEPATHS, montage=MONTAGES)
+
+
+#expand(data_fif + "/{montage}/{sample}_resampled.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+#expand(data_fif + "/{montage}/{sample}_bipolar.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+#expand(data_fif + "/{montage}/{sample}_epoched.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+#expand(data_fif + "/{montage}/{sample}_normalised.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
+#expand(data_hdf5 + "/{montage}/{sample}.h5", sample=EDF_FILEPATHS, montage=MONTAGES)

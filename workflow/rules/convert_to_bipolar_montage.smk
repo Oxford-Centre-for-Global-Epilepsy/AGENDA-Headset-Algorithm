@@ -10,10 +10,10 @@ config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config/spatial_mon
 # =======================
 rule convert_to_bipolar:
     input:
-        fif="{data_fif}/{sample}_resampled.fif",
+        fif= data_fif + "/{montage}/{sample}_resampled.fif",
         config=config_path
     output:
-        fif="{data_fif}/{sample}_bipolar_{montage}.fif"
+        fif=data_fif + "/{montage}/{sample}_bipolar.fif"
     params:
         script="scripts/convert_to_bipolar.py"
     conda:

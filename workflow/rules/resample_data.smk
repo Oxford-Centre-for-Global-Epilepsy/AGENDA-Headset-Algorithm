@@ -10,10 +10,10 @@ filters_config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config/fil
 # =======================
 rule resample_data:
     input:
-        fif = data_fif + "/{sample}_filtered.fif",
+        fif = data_fif + "/{montage}/{sample}_filtered.fif",
         config=filters_config_path
     output:
-        fif = data_fif + "/{sample}_resampled.fif"
+        fif = data_fif + "/{montage}/{sample}_resampled.fif"
     params:
         script="scripts/resample_data.py"
     conda:

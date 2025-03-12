@@ -15,7 +15,7 @@ rule bandpass_filter_data:
         edf = data_edf + "/{sample}.edf",
         config=filters_config_path
     output:
-        fif = data_fif + "/{sample}_filtered.fif"
+        fif = data_fif + "/{montage}/{sample}_filtered.fif"
     params:
         script="scripts/bandpass_filter_data.py"
     conda:
