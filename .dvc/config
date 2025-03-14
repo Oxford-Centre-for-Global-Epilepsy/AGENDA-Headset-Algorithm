@@ -1,3 +1,7 @@
 [cache]
     dir = /home/ndcn1133/.dvc/cache
     type = "reflink,copy"
+[core]
+    remote = local_remote
+['remote "local_remote"']
+    url = /home/ndcn1133/dvc_remote_storage
