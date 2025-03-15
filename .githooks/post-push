@@ -1,0 +1,12 @@
+#!/bin/bash
+
+echo "📦 Running DVC push after Git push..."
+dvc push
+
+if [ $? -eq 0 ]; then
+    echo "✅ DVC push completed successfully."
+else
+    echo "❌ DVC push failed!"
+    exit 1
+fi
+
