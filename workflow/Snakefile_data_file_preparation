@@ -4,7 +4,7 @@
 #   Workflow Purpose: Convert raw data files to common file format (.edf)
 # ========================================================================
 include: "rules/convert_data_to_edf.smk"
-include: "rules/move_edf_files.smk"
+#include: "rules/move_edf_files.smk"
 
 import os
 
@@ -48,4 +48,5 @@ print(f"✅ All .EDF files for processing: {EDF_FILEPATHS}")
 # =======================
 rule all:
     input:
-        expand(data_edf + "/{sample}.edf", sample=EDF_FILEPATHS)
+        expand(data_raw + "/{sample}.edf", sample=EDF_FILEPATHS)
+        #expand(data_edf + "/{sample}.edf", sample=EDF_FILEPATHS)

@@ -13,11 +13,11 @@ rule resample_data:
         fif = data_fif + "/{montage}/{sample}_filtered.fif",
         config=filters_config_path
     output:
-        fif = data_fif + "/{montage}/{sample}_resampled.fif"
+        fif = temp(data_fif + "/{montage}/{sample}_resampled.fif")
     params:
-        script="scripts/resample_data.py"
+        script="scripts/data_preprocessing/resample_data.py"
     conda:
-        "../envs/convert_to_bipolar_montage.yaml"
+        "../../envs/convert_to_bipolar_montage.yaml"
     shell:
         """
         echo "🔄  Resampling {input} → {output}"

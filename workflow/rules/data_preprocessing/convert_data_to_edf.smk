@@ -4,6 +4,7 @@ DATA_PATH = os.getenv("DATA")
 
 data_raw = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/raw"
 
+# Executable to convert Nihon-Kuhdon files to EDF format
 converter = f"{DATA_PATH}/AGENDA-Headset-Algorithm/tools/nk2edf"
 
 # =======================

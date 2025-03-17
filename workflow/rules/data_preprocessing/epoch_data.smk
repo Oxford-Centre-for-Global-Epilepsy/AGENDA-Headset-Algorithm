@@ -13,11 +13,11 @@ rule epoch_data:
         fif = data_fif + "/{montage}/{sample}_bipolar.fif",
         config=data_epochs_config_path
     output:
-        fif = data_fif + "/{montage}/{sample}_epoched.fif"
+        fif = temp(data_fif + "/{montage}/{sample}_epoched.fif")
     params:
-        script="scripts/epoch_data.py"
+        script="scripts/data_preprocessing/epoch_data.py"
     conda:
-        "../envs/convert_to_bipolar_montage.yaml"
+        "../../envs/convert_to_bipolar_montage.yaml"
     shell:
         """
         echo "🔄  Epoching {input} → {output}"

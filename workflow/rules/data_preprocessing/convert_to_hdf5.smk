@@ -5,6 +5,7 @@ DATA_PATH = os.getenv("DATA")
 
 data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
 data_hdf5 = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/hdf5"
+data_preprocessed = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/preprocessed"
 hdf5_config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config/hdf5_settings.yaml"
 montage_config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config/spatial_montages.yaml"
 
@@ -18,11 +19,11 @@ rule convert_to_hdf5:
         config = hdf5_config_path,
         montage_config = montage_config_path
     output:
-        hdf5 = data_hdf5 + "/{montage}/{sample}.h5"
+        hdf5 = data_preprocessed + "/{montage}/{sample}.h5"
     conda:
-        "../envs/convert_to_hdf5.yaml"
+        "../../envs/convert_to_hdf5.yaml"
     params:
-        script = "scripts/convert_to_hdf5.py"
+        script = "scripts/data_preprocessing/convert_to_hdf5.py"
     shell:
         """
         echo "📦 Converting {input.fif} → {output.hdf5}"

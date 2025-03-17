@@ -13,11 +13,11 @@ rule convert_to_bipolar:
         fif= data_fif + "/{montage}/{sample}_resampled.fif",
         config=config_path
     output:
-        fif=data_fif + "/{montage}/{sample}_bipolar.fif"
+        fif= temp(data_fif + "/{montage}/{sample}_bipolar.fif")
     params:
-        script="scripts/convert_to_bipolar.py"
+        script="scripts/data_preprocessing/convert_to_bipolar.py"
     conda:
-        "../envs/convert_to_bipolar_montage.yaml"
+        "../../envs/convert_to_bipolar_montage.yaml"
     shell:
         """
         echo "⚡ Converting {input.fif} to Bipolar Montage: {output.fif}"

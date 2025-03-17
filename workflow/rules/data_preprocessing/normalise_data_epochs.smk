@@ -11,11 +11,11 @@ rule normalise_epoched_data:
     input:
         fif = data_fif + "/{montage}/{sample}_epoched.fif"
     output:
-        fif = data_fif + "/{montage}/{sample}_normalised.fif"
+        fif = temp(data_fif + "/{montage}/{sample}_normalised.fif")
     params:
-        script="scripts/normalise_epoched_data.py"
+        script="scripts/data_preprocessing/normalise_epoched_data.py"
     conda:
-        "../envs/convert_to_bipolar_montage.yaml"
+        "../../envs/convert_to_bipolar_montage.yaml"
     shell:
         """
         echo "🔄  Normalising {input} → {output}"

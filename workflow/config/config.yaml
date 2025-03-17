@@ -1,4 +1,10 @@
-data_raw: "$DATA/AGENDA-Headset-Algorithm/data/raw"
-data_edf: "$DATA/AGENDA-Headset-Algorithm/data/edf"
-data_fif: "$DATA/AGENDA-Headset-Algorithm/data/fif"
-converter: "$DATA/AGENDA-Headset-Algorithm/tools/nk2edf"
+# config/config.yaml
+
+# List of sites to process (update as needed)
+sites_to_process:
+  - india
+
+# List the headset montages to process the data with (spatial configurations defined in config/spatial_montages.yaml)
+montages_to_process:
+  - 19_channel
+  - 17_channel_no_A1_A2
