@@ -20,10 +20,43 @@ This project fine-tunes EEGNet, a compact convolutional neural network for EEG d
 ## 📂 Project Structure
 ```graphql
 project-root/
-├── data/                # DVC-managed EEG data
-│   ├── raw/             # Original EEG files (e.g., .edf, .hdf5)
-│   ├── processed/       # Preprocessed EEG data (not included at present)
-│   └── external/        # External datasets
+├── .dvc/                                            # DVC-managed cache
+├── .githooks/                                       # Githooks 
+│   └── post-push                                    # Githook to trigger dvc pushes after git push executation
+├── data/                                            # DVC-managed EEG data
+│   ├── raw/                                         # Original EEG files (e.g., .edf, .hdf5) grouped by recording site and epilepsy diagnosis
+│   │    ├── agenda_site_1/                          # EEG Data from first AGENDA recording site 
+│   │    │   ├── epileptic/                          # EEG Data labelled as epileptic from first AGENDA site 
+|   │    │   │   ├── generalized/                    # Epileptic EEG Data labelled as generalized-type epilepsy
+|   │    │   │   |   ├── participant_G1_id.edf       # EEG Data recording from patient diagnosed with generalized epilepsy
+|   │    │   │   |   ├── participant_G2_id.edf       # (Same as above)
+|   │    │   │   |   ⋮   
+|   │    │   │   |   └── participant_G20_id.edf      
+|   │    │   │   └── focal/                          # Epileptic EEG Data labelled as focal onset-type epilepsy
+|   |    │   │       ├── left/                       # Focal onset Epileptic EEG Data labelled as originating from the left hemisphere
+|   |    │   │       |   ├── participant_FL1_id.edf  # EEG Data recording from patient diagnosed with left focal onset epilepsy
+|   |    │   │       |   ├── participant_FL2_id.edf  # (Same as above)
+|   |    │   │       |   ⋮   
+|   |    │   │       |   └── participant_FL20_id.edf
+|   |    │   │       └── right/                      # Focal onset Epileptic EEG Data labelled as originating from the right hemisphere
+|   |    │   │           ├── participant_FR1_id.edf  # (Same as above)
+|   |    │   │           ├── participant_FR2_id.edf
+|   |    │   │           ⋮   
+|   |    │   │           └── participant_FR20_id.edf
+│   │    │   └── neurotypical/                       # EEG Data labelled as neurotypical from first AGENDA site 
+│   │    │       ├── participant_N1_id.edf
+│   │    │       ├── participant_N2_id.edf
+│   │    │       ⋮   
+│   │    │       └── participant_N20_id.edf   
+│   │    ├── agenda_site_2/
+|   |    ⋮    
+│   │    └── agenda_site_N/
+│   └──
+│   ├── processed/                                  # Preprocessed EEG data
+│   │    ├── 19_channel/                            # Data was processed based on the 19 channel agenda headset montage
+|   |    ⋮                                          # Processed data folders follow same structure as above raw/ folder
+│   │    └── 16_channel/                            # Data was processed based on the 16 channel agenda headset montage
+│   └── external/        # External datasets  (not included at present)
 ├── notebooks/           # Jupyter notebooks for data exploration
 ├── src/                 # Source code for the project
 │   ├── data/            # Data preprocessing scripts
