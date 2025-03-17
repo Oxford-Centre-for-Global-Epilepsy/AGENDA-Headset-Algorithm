@@ -12,7 +12,7 @@ This project fine-tunes EEGNet, a compact convolutional neural network for EEG d
 
 ✅ DVC (Data Version Control) - Efficient data tracking and storage.
 
-✅ Snakemake Workflow - Fully automated pipeline for data preprocessing and model training.
+✅ Snakemake Workflow - Fully automated pipeline for data preprocessing (and model training).
 
 ✅ Multi-Site Generalization - Supports EEG data from multiple recording sites.
 
@@ -22,7 +22,7 @@ This project fine-tunes EEGNet, a compact convolutional neural network for EEG d
 project-root/
 ├── data/                # DVC-managed EEG data
 │   ├── raw/             # Original EEG files (e.g., .edf, .hdf5)
-│   ├── processed/       # Preprocessed EEG data
+│   ├── processed/       # Preprocessed EEG data (not included at present)
 │   └── external/        # External datasets
 ├── notebooks/           # Jupyter notebooks for data exploration
 ├── src/                 # Source code for the project
