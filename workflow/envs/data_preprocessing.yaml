@@ -1,0 +1,14 @@
+name: data_preprocessing_env  
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Core Python version
+  - python=3.11  # Ensure compatibility with Snakemake & ML frameworks
+  - pandas
+  - numpy
+  - matplotlib
+  - mne[hdf5]==1.7.0
+  - PyYAML
+  - h5py

@@ -15,11 +15,11 @@ rule bandpass_filter_data:
         edf = data_edf + "/{sample}.edf",
         config=filters_config_path
     output:
-        fif = temp(data_fif + "/{montage}/{sample}_filtered.fif")
+        fif = temp(data_fif + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}_filtered.fif")
     params:
         script="scripts/data_preprocessing/bandpass_filter_data.py"
     conda:
-        "../../envs/convert_to_bipolar_montage.yaml"
+        "../../envs/data_preprocessing.yaml"
     shell:
         """
         echo "📡 Applying bandpass filter to {input.edf}"

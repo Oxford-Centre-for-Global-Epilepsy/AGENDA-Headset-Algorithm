@@ -17,7 +17,7 @@ rule convert_to_bipolar:
     params:
         script="scripts/data_preprocessing/convert_to_bipolar.py"
     conda:
-        "../../envs/convert_to_bipolar_montage.yaml"
+        "../../envs/data_preprocessing.yaml"
     shell:
         """
         echo "⚡ Converting {input.fif} to Bipolar Montage: {output.fif}"

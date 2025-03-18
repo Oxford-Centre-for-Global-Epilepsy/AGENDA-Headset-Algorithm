@@ -8,13 +8,15 @@ configfile: "config/config.yaml"
 # Snakemake Rules to include
 include: "rules/data_preprocessing/bandpass_filter_data.smk"
 include: "rules/data_preprocessing/resample_data.smk"
-include: "rules/data_preprocessing/convert_to_bipolar_montage.smk"
+#include: "rules/data_preprocessing/convert_to_bipolar_montage.smk"
+include: "rules/data_preprocessing/convert_to_montage.smk"
 include: "rules/data_preprocessing/epoch_data.smk"
-include: "rules/data_preprocessing/normalise_data_epochs.smk"
+include: "rules/data_preprocessing/normalise_epochs.smk"
 include: "rules/data_preprocessing/convert_to_hdf5.smk"
 
 # Define the order of the rules
-ruleorder: bandpass_filter_data > resample_data > convert_to_bipolar > epoch_data > normalise_epoched_data > convert_to_hdf5
+#ruleorder: bandpass_filter_data > resample_data > convert_to_bipolar > epoch_data > normalise_epoched_data > convert_to_hdf5
+ruleorder: bandpass_filter_data > resample_data > convert_to_montage > epoch_data > normalise_epoched_data > convert_to_hdf5
 
 # ✅ Import `expand` for rule all
 #from snakemake.utils import expand
@@ -38,24 +40,47 @@ with open("config/config.yaml", "r") as file:
 # Load which site data should be processed
 SITES_TO_PROCESS = config.get("sites_to_process", [])  # Default to empty list if not set
 
-# Load which headset montage should be used for data processing
-MONTAGES = config.get("montages_to_process", [])  # Default to list with 19_channel if not set
+# Get the montage types to process
+MONTAGE_TYPES_TO_PROCESS = config.get("montage_types_to_process", [])
 
-# Make a wildcard constraint for the available montages
+# Load the montage details (raw, bipolar, monopolar montages)
+MONTAGES_TO_PROCESS = config.get("montages_to_process", {})
+
+# Extract montages from the correct nested keys
+MONTAGE_PAIRS = [(montage_type, montage_name) 
+                 for montage_type, montage_list in MONTAGES_TO_PROCESS.items() 
+                 for montage_name in montage_list]
+
+# Check what montages are being processed
+print(f"✅ Montages to Process: {MONTAGE_PAIRS}")
+
+# Generate valid constraints based on actual pairs of montage_type and montage_name
+VALID_MONTAGE_PAIRS = set(MONTAGE_PAIRS)  # Ensure uniqueness
+
+# Extract valid montage types & montage names based on allowed pairs
+VALID_MONTAGE_TYPES = sorted(set(montage_type for montage_type, _ in VALID_MONTAGE_PAIRS))
+VALID_MONTAGE_NAMES = sorted(set(montage_name for _, montage_name in VALID_MONTAGE_PAIRS))
+
+# Convert lists into valid Snakemake wildcard constraint strings (pipe-separated)
+VALID_MONTAGE_TYPES_STR = "|".join(VALID_MONTAGE_TYPES)
+VALID_MONTAGE_NAMES_STR = "|".join(VALID_MONTAGE_NAMES)
+VALID_SITES_STR = "|".join(SITES_TO_PROCESS)
+
+# Apply wildcard constraints dynamically to limit wildcard to only montages in config/config.yaml
 wildcard_constraints:
-    montage="19_channel|17_channel_no_A1_A2|17_channel_no_T3_T4|16_channel"
+    montage_type=VALID_MONTAGE_TYPES_STR,
+    montage_name=VALID_MONTAGE_NAMES_STR,
+    site=VALID_SITES_STR
 
 # =================================================
 # 🔎 Discover Raw Data EEG Files (in .edf format)
 # =================================================
 
-def discover_eeg_files(data_folder, file_extension=".EEG", sites=[]):
-    """Find all .EEG files in raw data directory, optionally filtering by sites."""
+def discover_eeg_files(data_folder, file_extension=".edf", sites=[]):
+    """Find all .edf files in raw data directory, returning (site, relative_filepath) tuples."""
     eeg_files = []
     
     for root, _, files in os.walk(data_folder):
-        
-        # Extract the site name (first folder in path)
         relative_path = os.path.relpath(root, data_folder)
         site_name = relative_path.split(os.sep)[0]  # Get top-level folder name
 
@@ -66,7 +91,8 @@ def discover_eeg_files(data_folder, file_extension=".EEG", sites=[]):
         for file in files:
             if file.endswith(file_extension):
                 relative_file_path = os.path.relpath(os.path.join(root, file), data_folder)
-                eeg_files.append(relative_file_path.replace(file_extension, ""))
+                relative_file_path = relative_file_path.replace(file_extension, "")
+                eeg_files.append((site_name, relative_file_path))
 
     return eeg_files
 
@@ -83,7 +109,10 @@ rule all:
     input:
         # Ensure all HDF5 files are created
         #expand(data_hdf5 + "/{montage}/{sample}.h5", sample=EDF_FILEPATHS, montage=MONTAGES),
-        expand(data_preprocessed + "/{montage}/{sample}.h5", sample=EDF_FILEPATHS, montage=MONTAGES),
+        #expand(data_preprocessed + "/{montage}/{sample}.h5", sample=EDF_FILEPATHS, montage=MONTAGES),
+        expand(data_preprocessed + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}.h5", sample=[sample for site, sample in EDF_FILEPATHS], 
+                                                                                        site=[site for site, sample in EDF_FILEPATHS], 
+                                                                                        montage_type_montage_name=MONTAGE_PAIRS),
         
         # Ensure all tensors are processed
         #expand(data_hdf5 + "/{montage}/{sample}_tensor.done", sample=EDF_FILEPATHS, montage=MONTAGES)

@@ -4,7 +4,10 @@
 sites_to_process:
   - india
 
-# List the headset montages to process the data with (spatial configurations defined in config/spatial_montages.yaml)
+# List of specific montages to process (can include specific montages from the spatial_montages.yaml file)
 montages_to_process:
-  - 19_channel
-  - 17_channel_no_A1_A2
+  bipolar:
+    - 19_channel
+    - 17_channel_no_A1_A2
+  monopolar:
+    - standard_10_20

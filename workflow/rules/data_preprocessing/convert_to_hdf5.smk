@@ -15,18 +15,18 @@ montage_config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config/spa
 
 rule convert_to_hdf5:
     input:
-        fif = data_fif + "/{montage}/{sample}_normalised.fif",
+        fif = data_fif + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}_normalised.fif",
         config = hdf5_config_path,
         montage_config = montage_config_path
     output:
-        hdf5 = data_preprocessed + "/{montage}/{sample}.h5"
+        hdf5 = data_preprocessed + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}.h5"
     conda:
-        "../../envs/convert_to_hdf5.yaml"
+        "../../envs/data_preprocessing.yaml"
     params:
         script = "scripts/data_preprocessing/convert_to_hdf5.py"
     shell:
         """
         echo "📦 Converting {input.fif} → {output.hdf5}"
         mkdir -p $(dirname {output.hdf5})
-        python {params.script} "{input.fif}" "{output.hdf5}" "{input.config}" "{input.montage_config}" "{wildcards.montage}"
+        python {params.script} "{input.fif}" "{output.hdf5}" "{input.config}" "{input.montage_config}" "{wildcards.montage_type_montage_name[0]}" "{wildcards.montage_type_montage_name[1]}" "{wildcards.site}"
         """
