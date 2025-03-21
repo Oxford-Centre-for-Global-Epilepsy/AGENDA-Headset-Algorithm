@@ -31,7 +31,7 @@ def load_montage(montage_path, montage_type, montage_name):
             return "bipolar", anodes, cathodes
 
         # Monopolar Montage to be applied to the data
-        if montage_type == "monopolar" and montage_name in montage_config["monopolar_montages"]:
+        if montage_type == "monopolar" and montage_name in montage_config["montages"]["monopolar"]:
             channels = montage_config["montages"]["monopolar"][montage_name]["channels"]
             return "monopolar", channels, None
 

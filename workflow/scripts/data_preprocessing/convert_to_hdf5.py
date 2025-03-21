@@ -42,7 +42,7 @@ def extract_class_labels(file_path, site):
     return class_labels
 
 
-def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_name, site):
+def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_name, site, data_class_label):
     """
     Convert an MNE epoched .fif file into an HDF5 format for model training.
 
@@ -53,6 +53,7 @@ def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_n
     - montage_type (str): Montage type (raw, monopolar, bipolar).
     - montage_name (str): Name of the montage used.
     - site (str): Site name, used to extract class labels.
+    - data_class_label (str): Class labels for the data.
     """
     print(f"🔄 Loading config file: {config_file}")
     with open(config_file, "r") as file:
@@ -80,7 +81,9 @@ def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_n
     subject_id = os.path.basename(input_fif).split(".")[0]
 
     # Extract hierarchical class labels using site
-    class_labels = extract_class_labels(input_fif, site)
+    #class_labels = extract_class_labels(input_fif, site)
+    class_labels = data_class_label.split("_")
+    
     print(f"🏷️ Class Labels for {subject_id}: {class_labels}")
 
     # Ensure output directory exists
@@ -125,10 +128,9 @@ def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_n
 
     print("✅ HDF5 conversion complete!")
 
-
 if __name__ == "__main__":
-    if len(sys.argv) != 7:
-        print("Usage: python scripts/convert_to_hdf5.py <input_fif> <output_hdf5> <config_file> <montage_type> <montage_name> <site>", flush=True)
+    if len(sys.argv) != 8:
+        print("Usage: python scripts/convert_to_hdf5.py <input_fif> <output_hdf5> <config_file> <montage_type> <montage_name> <site> <class_label>", flush=True)
         sys.exit(1)
 
     input_fif = sys.argv[1]
@@ -137,5 +139,6 @@ if __name__ == "__main__":
     montage_type = sys.argv[4]
     montage_name = sys.argv[5]
     site = sys.argv[6]
+    data_class_label = sys.argv[7]
 
-    convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_name, site)
+    convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_name, site, data_class_label)

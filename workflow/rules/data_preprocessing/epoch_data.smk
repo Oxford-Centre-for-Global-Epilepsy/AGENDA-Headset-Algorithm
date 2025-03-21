@@ -2,7 +2,7 @@ import os
 
 DATA_PATH = os.getenv("DATA")
 
-data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
+data_temp = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/temp"
 data_epochs_config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config/epoch_settings.yaml"
 
 # =======================
@@ -10,10 +10,10 @@ data_epochs_config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config
 # =======================
 rule epoch_data:
     input:
-        fif = data_fif + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}_bipolar.fif",
+        fif = data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_headset_montage.fif",
         config=data_epochs_config_path
     output:
-        fif = temp(data_fif + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}_epoched.fif")
+        fif = temp(data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_epoched.fif")
     params:
         script="scripts/data_preprocessing/epoch_data.py"
     conda:

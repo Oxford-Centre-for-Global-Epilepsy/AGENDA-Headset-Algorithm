@@ -8,14 +8,12 @@ configfile: "config/config.yaml"
 # Snakemake Rules to include
 include: "rules/data_preprocessing/bandpass_filter_data.smk"
 include: "rules/data_preprocessing/resample_data.smk"
-#include: "rules/data_preprocessing/convert_to_bipolar_montage.smk"
 include: "rules/data_preprocessing/convert_to_montage.smk"
 include: "rules/data_preprocessing/epoch_data.smk"
 include: "rules/data_preprocessing/normalise_epochs.smk"
 include: "rules/data_preprocessing/convert_to_hdf5.smk"
 
 # Define the order of the rules
-#ruleorder: bandpass_filter_data > resample_data > convert_to_bipolar > epoch_data > normalise_epoched_data > convert_to_hdf5
 ruleorder: bandpass_filter_data > resample_data > convert_to_montage > epoch_data > normalise_epoched_data > convert_to_hdf5
 
 # ✅ Import `expand` for rule all
@@ -29,9 +27,8 @@ if not DATA_PATH:
     raise ValueError("ERROR: The $DATA environment variable is not set!")
 
 data_edf = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/edf"
-data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
-data_hdf5 = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/hdf5"
-data_preprocessed = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/preprocessed"
+data_temp = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/temp"
+data_processed = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/processed"
 
 # ✅ Load Configuration from YAML (for site-specific and montage-specific data processing)
 with open("config/config.yaml", "r") as file:
@@ -50,27 +47,6 @@ MONTAGES_TO_PROCESS = config.get("montages_to_process", {})
 MONTAGE_PAIRS = [(montage_type, montage_name) 
                  for montage_type, montage_list in MONTAGES_TO_PROCESS.items() 
                  for montage_name in montage_list]
-
-# Check what montages are being processed
-print(f"✅ Montages to Process: {MONTAGE_PAIRS}")
-
-# Generate valid constraints based on actual pairs of montage_type and montage_name
-VALID_MONTAGE_PAIRS = set(MONTAGE_PAIRS)  # Ensure uniqueness
-
-# Extract valid montage types & montage names based on allowed pairs
-VALID_MONTAGE_TYPES = sorted(set(montage_type for montage_type, _ in VALID_MONTAGE_PAIRS))
-VALID_MONTAGE_NAMES = sorted(set(montage_name for _, montage_name in VALID_MONTAGE_PAIRS))
-
-# Convert lists into valid Snakemake wildcard constraint strings (pipe-separated)
-VALID_MONTAGE_TYPES_STR = "|".join(VALID_MONTAGE_TYPES)
-VALID_MONTAGE_NAMES_STR = "|".join(VALID_MONTAGE_NAMES)
-VALID_SITES_STR = "|".join(SITES_TO_PROCESS)
-
-# Apply wildcard constraints dynamically to limit wildcard to only montages in config/config.yaml
-wildcard_constraints:
-    montage_type=VALID_MONTAGE_TYPES_STR,
-    montage_name=VALID_MONTAGE_NAMES_STR,
-    site=VALID_SITES_STR
 
 # =================================================
 # 🔎 Discover Raw Data EEG Files (in .edf format)
@@ -92,15 +68,26 @@ def discover_eeg_files(data_folder, file_extension=".edf", sites=[]):
             if file.endswith(file_extension):
                 relative_file_path = os.path.relpath(os.path.join(root, file), data_folder)
                 relative_file_path = relative_file_path.replace(file_extension, "")
-                eeg_files.append((site_name, relative_file_path))
+
+                # Remove the site name from the relative file path
+                if relative_file_path.startswith(site_name + os.sep):
+                    relative_file_path = relative_file_path[len(site_name) + 1:]  # Drop site name + "/"
+
+                # Ensure that relative_file_path is not empty before appending
+                if relative_file_path:
+                    eeg_files.append((site_name, relative_file_path))
 
     return eeg_files
 
 # 🏆 ** Get list of the file paths to the EEG data (in .edf format) based on configured sites **
-EDF_FILEPATHS = discover_eeg_files(data_folder=data_edf, file_extension=".edf", sites=SITES_TO_PROCESS)
+EDF_SITE_FILEPATHS = discover_eeg_files(data_folder=data_edf, file_extension=".edf", sites=SITES_TO_PROCESS)
 
 print(f"✅ Processing EEG Files from Sites: {SITES_TO_PROCESS}")
-print(f"🧠 Found {len(EDF_FILEPATHS)} EEG files for processing.")
+print(f"🧠 Found {len(EDF_SITE_FILEPATHS)} EEG files for processing.")
+print(f"✅ EDF Files to Process: {EDF_SITE_FILEPATHS}")
+
+# Check what montages are being processed
+print(f"✅ Montages to Process: {MONTAGE_PAIRS}")
 
 # =======================
 # 🏁 Define rule all
@@ -108,18 +95,12 @@ print(f"🧠 Found {len(EDF_FILEPATHS)} EEG files for processing.")
 rule all:
     input:
         # Ensure all HDF5 files are created
-        #expand(data_hdf5 + "/{montage}/{sample}.h5", sample=EDF_FILEPATHS, montage=MONTAGES),
-        #expand(data_preprocessed + "/{montage}/{sample}.h5", sample=EDF_FILEPATHS, montage=MONTAGES),
-        expand(data_preprocessed + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}.h5", sample=[sample for site, sample in EDF_FILEPATHS], 
-                                                                                        site=[site for site, sample in EDF_FILEPATHS], 
-                                                                                        montage_type_montage_name=MONTAGE_PAIRS),
-        
-        # Ensure all tensors are processed
-        #expand(data_hdf5 + "/{montage}/{sample}_tensor.done", sample=EDF_FILEPATHS, montage=MONTAGES)
-
-
-#expand(data_fif + "/{montage}/{sample}_resampled.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
-#expand(data_fif + "/{montage}/{sample}_bipolar.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
-#expand(data_fif + "/{montage}/{sample}_epoched.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
-#expand(data_fif + "/{montage}/{sample}_normalised.fif", sample=EDF_FILEPATHS, montage=MONTAGES)
-#expand(data_hdf5 + "/{montage}/{sample}.h5", sample=EDF_FILEPATHS, montage=MONTAGES)
+        #expand(data_temp + "/{montage_type_name[0]}/{montage_type_name[1]}/{site_sample[0]}/{site_sample[1]}_filtered.fif", site_sample=EDF_SITE_FILEPATHS, montage_type_name=MONTAGE_PAIRS)
+        #expand(data_temp + "/{montage_type_name[0]}/{montage_type_name[1]}/{site_sample[0]}/{site_sample[1]}_resampled.fif", site_sample=EDF_SITE_FILEPATHS, montage_type_name=MONTAGE_PAIRS)
+        #expand(data_temp + "/{montage_type_name[0]}/{montage_type_name[1]}/{site_sample[0]}/{site_sample[1]}_headset_montage.fif", site_sample=EDF_SITE_FILEPATHS, montage_type_name=MONTAGE_PAIRS)
+        #expand(data_temp + "/{montage_type_name[0]}/{montage_type_name[1]}/{site_sample[0]}/{site_sample[1]}_epoched.fif", site_sample=EDF_SITE_FILEPATHS, montage_type_name=MONTAGE_PAIRS)
+        #expand(data_temp + "/{montage_type_name[0]}/{montage_type_name[1]}/{site_sample[0]}/{site_sample[1]}_normalised.fif", site_sample=EDF_SITE_FILEPATHS, montage_type_name=MONTAGE_PAIRS)
+        expand(data_processed + "/{montage_type_name[0]}/{montage_type_name[1]}/{site_sample[0]}/{site_sample[1]}.h5", site_sample=EDF_SITE_FILEPATHS, montage_type_name=MONTAGE_PAIRS)
+    
+    
+    

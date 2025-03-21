@@ -2,7 +2,7 @@ import os
 
 DATA_PATH = os.getenv("DATA")
 
-data_fif = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/fif"
+data_temp = f"{DATA_PATH}/AGENDA-Headset-Algorithm/data/temp"
 config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config/spatial_montages.yaml"
 
 # ==============================================================================
@@ -12,10 +12,10 @@ config_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/workflow/config/spatial_mon
 # ==============================================================================
 rule convert_to_montage:
     input:
-        fif= data_fif + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}_resampled.fif",
+        fif = data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_resampled.fif",
         config=config_path
     output:
-        fif= temp(data_fif + "/{montage_type_montage_name[0]}/{montage_type_montage_name[1]}/{site}/{sample}_bipolar.fif")
+        fif = temp(data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_headset_montage.fif")
     params:
         script="scripts/data_preprocessing/convert_to_montage.py"
     conda:
@@ -24,5 +24,5 @@ rule convert_to_montage:
         """
         echo "⚡ Converting {input.fif} to {wildcards.montage_type} ({wildcards.montage_name}): {output.fif}"
         mkdir -p $(dirname {output.fif})
-        python {params.script} "{input.fif}" "{output.fif}" "{input.config}" "{wildcards.montage_type_montage_name[0]}" "{wildcards.montage_type_montage_name[1]}"
+        python {params.script} "{input.fif}" "{output.fif}" "{input.config}" "{wildcards.montage_type}" "{wildcards.montage_name}"
         """
