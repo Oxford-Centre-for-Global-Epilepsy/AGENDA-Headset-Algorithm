@@ -7,41 +7,6 @@ import mne
 import yaml
 import numpy as np
 
-
-def extract_class_labels(file_path, site):
-    """
-    Extract hierarchical class labels from the EEG file path based on site argument.
-
-    Example:
-    - "data/edf/india/epileptic/focal/left/MK535FH5.edf" -> ["epileptic", "focal", "left"]
-    - "data/edf/india/epileptic/generalized/MK535FH5.edf" -> ["epileptic", "generalized"]
-    - "data/edf/india/neurotypical/MK535FH5.edf" -> ["neurotypical"]
-
-    Parameters:
-    - file_path (str): Full path to the EEG file.
-    - site (str): Site name (e.g., "india"), used to determine where labels begin.
-
-    Returns:
-    - class_labels (list): List of hierarchical class labels.
-    """
-    # Normalize path to ensure compatibility across OS
-    file_path = os.path.normpath(file_path)
-
-    # Split the path into components
-    path_parts = file_path.split(os.sep)
-
-    # Find the index of the site in the path
-    try:
-        site_index = path_parts.index(site)
-    except ValueError:
-        raise ValueError(f"❌ ERROR: Site '{site}' not found in file path: {file_path}")
-
-    # Extract class labels (everything AFTER the site, EXCLUDING the filename)
-    class_labels = path_parts[site_index + 1 : -1]
-
-    return class_labels
-
-
 def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_name, site, data_class_label):
     """
     Convert an MNE epoched .fif file into an HDF5 format for model training.
@@ -81,7 +46,6 @@ def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_n
     subject_id = os.path.basename(input_fif).split(".")[0]
 
     # Extract hierarchical class labels using site
-    #class_labels = extract_class_labels(input_fif, site)
     class_labels = data_class_label.split("_")
     
     print(f"🏷️ Class Labels for {subject_id}: {class_labels}")
