@@ -1,0 +1,38 @@
+
+configfile: "config/combined_processed_dataset_config.yaml"
+
+# Construct the output file path
+dataset_name = config["dataset_name"]
+montage_type = config["montage_type"]
+montage_name = config["montage_name"]
+output_dir = config.get("output_dir", "data/final_processed")
+
+DATA_PATH = os.getenv("DATA")
+if not DATA_PATH:
+    raise ValueError("ERROR: The $DATA environment variable is not set!")
+
+project_folder_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm/"
+
+output_hdf5 = project_folder_path + f"{output_dir}/{dataset_name}.h5"
+
+rule all:
+    input:
+        output_hdf5
+
+rule combine_hdf5:
+    input:
+        configfile="config/combined_processed_dataset_config.yaml"
+    output:
+        output_hdf5
+    params:
+        project_filepath=project_folder_path
+    conda:
+        "envs/combine_hdf5.yaml"  # path to your conda env if needed
+    shell:
+        """
+        mkdir -p {output_dir}
+        python scripts/data_preprocessing/combine_hdf5.py \
+            --config {input.configfile} \
+            --output {output} \
+            --source_filepath {params.project_filepath}
+        """

@@ -2,12 +2,12 @@
 
 # List of sites to process (update as needed)
 sites_to_process:
-  - india
+  - south_africa
 
 # List of specific montages to process (can include specific montages from the spatial_montages.yaml file)
 montages_to_process:
-  bipolar:
-    - 19_channel
-    - 17_channel_no_A1_A2
+  #bipolar:
+  #  - 19_channel
+  #  - 17_channel_no_A1_A2
   monopolar:
     - standard_10_20

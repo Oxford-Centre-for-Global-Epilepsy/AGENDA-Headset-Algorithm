@@ -84,6 +84,7 @@ def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_n
         f.attrs["class_label_hierarchy"] = " > ".join(class_labels)
 
         # Additional metadata
+        f.attrs["site_id"] = site
         f.attrs["subject_id"] = subject_id
         f.attrs["n_epochs"] = n_epochs
         f.attrs["n_channels"] = n_channels
