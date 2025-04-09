@@ -90,6 +90,28 @@ class EEGRecordingDataset(Dataset):
             "attention_mask": torch.tensor(epoch_mask, dtype=torch.bool),  # [E]
             "subject_id": subject_id
         }
+    
+    def get_subject_ids(self):
+        """Returns list of subject IDs in the dataset."""
+        return self.subject_ids
+
+    def get_subjects_with_labels(self):
+        """
+        Returns a dict: {subject_id: (level1, level2, level3)} label triplets
+        """
+        label_map = {}
+        with h5py.File(self.h5_file_path, "r") as f:
+            group = f[self.dataset_name]
+            for sid in group.keys():
+                labels = group[sid].attrs["class_labels"]
+                if isinstance(labels[0], bytes):
+                    labels = [l.decode("utf-8") for l in labels]
+                label_map[sid] = tuple(labels)
+        return label_map
+
+    def filter_subjects(self, include_ids):
+        """Filters dataset to only include specified subject IDs."""
+        self.subject_ids = [sid for sid in self.subject_ids if sid in include_ids]
 
 # Old Code to update: EEG Dataset class for when there is labels for epochs in the recording, i.e. each epoch has its own label that can be used for training
 class EEGDataset(Dataset):

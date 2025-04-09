@@ -42,3 +42,4 @@ dependencies:
       - einops
       - scikit-learn
       - wandb
+      - omegaconf

@@ -99,7 +99,6 @@ class ChannelMaskTransform:
         x[:, mask_idxs, :] = 0
         return x
 
-
 class Compose:
     """
     Composes several transforms together and applies them sequentially.
