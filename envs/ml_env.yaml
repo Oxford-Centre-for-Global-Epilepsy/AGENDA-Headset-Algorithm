@@ -1,0 +1,44 @@
+name: ml_env  
+channels:
+  - conda-forge
+  - defaults
+  - pytorch
+
+dependencies:
+  # Base environment
+  - python=3.10
+  - pip
+
+  # Core ML frameworks
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cudatoolkit=11.8  # Replace with 'cpuonly' if you're not using a GPU
+
+  # EEG and scientific stack
+  - numpy
+  - scipy
+  - h5py
+  - mne
+
+  # Workflow and data pipeline
+  - tqdm
+  - pyyaml
+
+  # Visualization and notebooks
+  - ipykernel
+  - jupyterlab
+  - matplotlib
+  - seaborn
+
+  # Development tools
+  - black
+  - isort
+  - pylint
+
+  # Install TensorFlow via pip for latest support
+  - pip:
+      - tensorflow>=2.13
+      - einops
+      - scikit-learn
+      - wandb
