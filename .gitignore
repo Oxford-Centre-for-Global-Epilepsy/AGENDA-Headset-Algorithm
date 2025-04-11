@@ -170,8 +170,28 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# data
-data/
-
+# Snakemake Workflow (Data processing)
 workflow/.snakemake
-/data
+
+# Data (raw/processed files — use DVC instead!)
+data/
+!data/README.md  # keep an example or placeholder
+
+# Logs (SLURM, errors, training prints)
+logs/
+*.log
+*.out
+*.err
+
+# Model outputs, checkpoints, and training artifacts
+outputs/
+models/
+exports/best_models/
+
+# Results and plots (optional)
+results/
+*.csv
+*.tsv
+*.png
+*.jpg
+*.pdf
