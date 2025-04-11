@@ -1,0 +1,8 @@
+{
+    "python.formatting.provider": "black",
+    "editor.tabSize": 4,
+    "notebook.lineNumbers": "on",
+    "files.trimTrailingWhitespace": true,
+    "security.workspace.trust.untrustedFiles": "open",
+    "workbench.colorTheme": "Quiet Light"
+  }

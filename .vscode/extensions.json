@@ -1,0 +1,19 @@
+{
+    "recommendations": [
+      "ms-vscode-remote.remote-ssh",
+      "timonwong.shellcheck",
+      "ms-python.python",
+      "ms-python.vscode-pylance",
+      "ms-toolsai.jupyter",
+      "donjayamanne.python-environment-manager",
+      "randomfractalsinc.vscode-data-preview",
+      "groupe-element.vscode-slurm-dashboard",
+      "mads-hartmann.bash-ide-vscode",
+      "emilast.logfilehighlighter",
+      "aaron-bond.better-comments",
+      "eamodio.gitlens",
+      "yzhang.markdown-all-in-one",
+      "iterative.dvc",
+      "iterative.vscode-dvc-pack"
+    ]
+  }

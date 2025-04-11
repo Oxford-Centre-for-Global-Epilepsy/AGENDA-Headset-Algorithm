@@ -195,3 +195,6 @@ results/
 *.png
 *.jpg
 *.pdf
+
+# Ignore personal VS Code settings
+.vscode/settings.json
