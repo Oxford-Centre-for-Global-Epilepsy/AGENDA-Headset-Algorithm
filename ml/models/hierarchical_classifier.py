@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from models.eegnet import EEGNet
-from models.attention_pooling import MeanPooling, AttentionPooling, TransformerPooling
+from ml.models.eegnet import EEGNet
+from ml.models.attention_pooling import MeanPooling, AttentionPooling, TransformerPooling
 
 class EEGNetHierarchicalClassifier(nn.Module):
     def __init__(self,

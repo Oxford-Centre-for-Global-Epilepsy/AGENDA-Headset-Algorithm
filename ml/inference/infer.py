@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from models.eegnet import EEGNet
+from ml.models.eegnet import EEGNet
 
 # Load trained model
 model = EEGNet(num_classes=2)

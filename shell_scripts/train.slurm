@@ -1,10 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=AGENDA_Algorithm_Training_fold${FOLD}
-#SBATCH --output=logs/fold${FOLD}_%j.out
-#SBATCH --error=logs/fold${FOLD}_%j.err
 #SBATCH --time=04:00:00
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 
@@ -16,7 +11,14 @@ source ~/.bashrc
 conda activate ml_env
 
 # Navigate to project root
-cd $DATA/AGENDA-Headset-Algorithm
+cd /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm
+
+# Make sure Python can find ml/ as a package
+export PYTHONPATH=$PWD:$PYTHONPATH
+
+# Optional: confirm current dir and Python path
+echo \"Working dir: $(pwd)\"
+echo \"Python path: $PYTHONPATH\"
 
 # Run training
 python -m ml.training.train \

@@ -1,6 +1,6 @@
 from collections import defaultdict
 import random
-from datasets.eeg_dataset import EEGRecordingDataset
+from ml.datasets.eeg_dataset import EEGRecordingDataset
 
 def stratified_split_subjects(subject_to_labels, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42):
     """
@@ -71,7 +71,7 @@ def create_kfold_stratified_datasets(h5_path, dataset_name, label_map, k_folds, 
     """
     from sklearn.model_selection import StratifiedKFold
     import numpy as np
-    from datasets.eeg_dataset import EEGRecordingDataset
+    from ml.datasets.eeg_dataset import EEGRecordingDataset
 
     full_dataset = EEGRecordingDataset(h5_path, dataset_name, label_map)
     subject_to_labels = full_dataset.get_subjects_with_labels()

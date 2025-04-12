@@ -4,12 +4,12 @@ import os
 import csv
 import torch
 from torch.utils.data import DataLoader
-from models.hierarchical_classifier import EEGNetHierarchicalClassifier
-from datasets.eeg_dataset import EEGRecordingDataset
-from training.metrics import compute_per_level_metrics
-from training.losses import HierarchicalLoss
-from training.utils import EarlyStopping
-from utils.splits import create_stratified_datasets, create_kfold_stratified_datasets
+from ml.datasets.eeg_dataset import EEGRecordingDataset
+from ml.training.metrics import compute_per_level_metrics
+from ml.training.losses import HierarchicalLoss
+from ml.training.utils import EarlyStopping
+from ml.utils.splits import create_stratified_datasets, create_kfold_stratified_datasets
+from ml.models.hierarchical_classifier import EEGNetHierarchicalClassifier
 
 def parse_config():
     if "--config" not in sys.argv:
@@ -53,7 +53,7 @@ def main():
 
     with open(log_path, mode="w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=log_fields)
-        writer.writeheader()`
+        writer.writeheader()
 
     label_map = {
         'neurotypical': 0,
