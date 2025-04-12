@@ -23,7 +23,7 @@ def combine_hdf5_files(config, output_file, project_path):
     # Auto-discover files if not specified
     if not input_files:
         print("🔍 No input_files specified, searching using sites_to_include...")
-        base_path = os.path.join(project_path, "data", "preprocessed", montage_type, montage_name)
+        base_path = os.path.join(project_path, "data", "processed", montage_type, montage_name)
         input_files = find_all_h5_files(base_path, sites)
         print(f"✅ Found {len(input_files)} matching HDF5 files")
 
@@ -49,7 +49,7 @@ def combine_hdf5_files(config, output_file, project_path):
 
                 # Always copy the main data array
                 if "data" in eeg_group:
-                    subj_grp.create_dataset("data", data=eeg_group["data"][()])
+                    subj_grp.create_dataset("data", data=eeg_group["data"][()], compression="gzip")
                 else:
                     print(f"⚠️ Dataset 'data' not found in {in_file}")
 

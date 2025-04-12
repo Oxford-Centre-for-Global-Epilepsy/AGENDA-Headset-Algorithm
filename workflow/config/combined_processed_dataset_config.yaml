@@ -3,9 +3,9 @@ montage_type: monopolar
 montage_name: standard_10_20
 sites_to_include: ["south_africa"]
 output_file: data/final_processed/combined_south_africa_monopolar_standard_10_20.h5
-input_files:
-  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/epileptic_generalized/CA001AUO.h5
-  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/epileptic_generalized/MA0979PV.h5
-  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/epileptic_focal_left/GA5320EF.h5
-  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/epileptic_focal_right/MA097959.h5
-  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/neurotypical/GA5322H7.h5
+#input_files:
+#  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/epileptic_generalized/CA001AUO.h5
+#  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/epileptic_generalized/MA0979PV.h5
+#  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/epileptic_focal_left/GA5320EF.h5
+#  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/epileptic_focal_right/MA097959.h5
+#  - /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/processed/monopolar/standard_10_20/south_africa/neurotypical/GA5322H7.h5
