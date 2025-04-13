@@ -14,6 +14,11 @@ def masked_cross_entropy(logits, targets, mask):
     Returns:
         Scalar loss
     """
+
+    print("Logits shape:", logits.shape)
+    print("Targets:", targets)
+    print("Unique target values:", torch.unique(targets))
+
     if mask.sum() == 0:
         return torch.tensor(0.0, device=logits.device, requires_grad=True)
 
@@ -31,14 +36,19 @@ class HierarchicalLoss(nn.Module):
         """
         Args:
             outputs: dict with keys 'level1_logits', 'level2_logits', 'level3_logits'
-            targets: tensor [B, 3]
+            targets: tensor [B, 3] (global label indices)
             label_mask: tensor [B, 3] - 1 = valid label
-        
-        Returns:
-            Total masked hierarchical loss
         """
+
+        # Level 1: 0 = neurotypical, 1 = epileptic (already correct)
         loss1 = masked_cross_entropy(outputs["level1_logits"], targets[:, 0], label_mask[:, 0])
-        loss2 = masked_cross_entropy(outputs["level2_logits"], targets[:, 1], label_mask[:, 1])
-        loss3 = masked_cross_entropy(outputs["level3_logits"], targets[:, 2], label_mask[:, 2])
+
+        # Level 2: remap 2=focal → 0, 3=generalized → 1
+        level2_target = torch.where(targets[:, 1] == 3, 1, 0)
+        loss2 = masked_cross_entropy(outputs["level2_logits"], level2_target, label_mask[:, 1])
+
+        # Level 3: remap 4=left → 0, 5=right → 1
+        level3_target = torch.where(targets[:, 2] == 5, 1, 0)
+        loss3 = masked_cross_entropy(outputs["level3_logits"], level3_target, label_mask[:, 2])
 
         return self.weights[0] * loss1 + self.weights[1] * loss2 + self.weights[2] * loss3

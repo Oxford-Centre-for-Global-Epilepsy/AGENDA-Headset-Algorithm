@@ -183,6 +183,9 @@ logs/
 *.out
 *.err
 
+# MLflow local runs (if using local file tracking)
+mlruns/
+
 # Model outputs, checkpoints, and training artifacts
 outputs/
 models/
@@ -195,6 +198,16 @@ results/
 *.png
 *.jpg
 *.pdf
+
+# TensorBoard or similar
+runs/
+events.out.tfevents.*
+
+# Temporary or auto-generated config snapshots
+**/config_used.yaml
+
+# Hydra (if you start using it)
+.multirun/
 
 # Ignore personal VS Code settings
 .vscode/settings.json

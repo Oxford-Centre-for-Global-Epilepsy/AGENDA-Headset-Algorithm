@@ -1,27 +1,48 @@
-# Dataset
-data_path: "/data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/final_processed/combined_south_africa_monopolar_standard_10_20.h5"
+# ------------------------
+# 📁 Dataset Configuration
+# ------------------------
+#data_path: "/data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/final_processed/combined_south_africa_monopolar_standard_10_20.h5"
 dataset_name: "combined_south_africa_monopolar_standard_10_20"
-output_dir: "data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/ml/outputs/run1"
 
-# Model
+# ------------------------
+# 📦 Experiment Tracking
+# ------------------------
+experiment_name: "baseline_initial_model_setup"
+run_id: null  # (Optional) Can be filled automatically with a timestamp or UUID
+output_dir: "data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/ml/outputs/${experiment_name}"
+seed: 42                  # For reproducibility
+notes: "First test on South Africa monopolar montage"
+tags: ["monopolar", "attention", "south_africa"]
+
+# ------------------------
+# 🧠 Model Configuration
+# ------------------------
 pooling_type: "attention"
 dropout_rate: 0.5
 kernel_length: 64
 
-# Training
+# ------------------------
+# ⚙️ Training Settings
+# ------------------------
 batch_size: 4
-epochs: 20
+epochs: 100
 lr: 0.001
-device: "cuda"
+# device, i.e. whether to use GPU or not, is set dynamically in code
 
-# Early stopping
-patience: 5
+# ------------------------
+# 🛑 Early Stopping
+# ------------------------
+patience: 10
 min_delta: 0.001
 
-# Cross-validation
+# ------------------------
+# 🔁 Cross-Validation
+# ------------------------
 k_folds: 5
 fold_index: 0
 
-# Checkpoints (Should training resume from a checkpoint)
+# ------------------------
+# 💾 Checkpointing        (Should training resume from a checkpoint)
+# ------------------------
 resume: false            # Whether to resume from a previous checkpoint
 checkpoint_path: null    # Optional path to load from; will default to latest in output_dir

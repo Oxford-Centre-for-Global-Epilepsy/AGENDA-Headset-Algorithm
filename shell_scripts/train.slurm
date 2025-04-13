@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=04:00:00
+#SBATCH --time=09:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 
@@ -8,7 +8,7 @@
 
 # Load environment
 source ~/.bashrc
-conda activate ml_env
+conda activate new_ml_env
 
 # Navigate to project root
 cd /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm

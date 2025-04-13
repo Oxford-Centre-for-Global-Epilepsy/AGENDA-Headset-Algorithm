@@ -1,4 +1,4 @@
-name: ml_env  
+name: new_ml_env  
 channels:
   - conda-forge
   - defaults
@@ -26,8 +26,6 @@ dependencies:
   - pyyaml
 
   # Visualization and notebooks
-  - ipykernel
-  - jupyterlab
   - matplotlib
   - seaborn
 
@@ -41,5 +39,6 @@ dependencies:
       - tensorflow>=2.13
       - einops
       - scikit-learn
-      - wandb
+      #- wandb
+      - mlflow-skinny
       - omegaconf
