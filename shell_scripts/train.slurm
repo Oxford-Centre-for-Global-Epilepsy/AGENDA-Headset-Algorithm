@@ -16,13 +16,9 @@ cd /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm
 # Make sure Python can find ml/ as a package
 export PYTHONPATH=$PWD:$PYTHONPATH
 
-# Optional: confirm current dir and Python path
-echo \"Working dir: $(pwd)\"
-echo \"Python path: $PYTHONPATH\"
-
 # Run training
 python -m ml.training.train \
-  --config configs/base.yaml \
+  --config configs/${POOLING_TYPE}_pooling_model.yaml \
   fold_index=$FOLD \
-  output_dir=outputs/run_fold_$FOLD \
+  pooling_type=$POOLING_TYPE \
   resume=true

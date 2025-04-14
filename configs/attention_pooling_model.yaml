@@ -1,15 +1,13 @@
 # ------------------------
 # 📁 Dataset Configuration
 # ------------------------
-#data_path: "/data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/final_processed/combined_south_africa_monopolar_standard_10_20.h5"
 dataset_name: "combined_south_africa_monopolar_standard_10_20"
 
 # ------------------------
 # 📦 Experiment Tracking
 # ------------------------
-experiment_name: "baseline_model_testing"
+experiment_name: "attention_pooling_model_testing"
 #run_id: null  # (Optional) Can be filled automatically with a timestamp or UUID
-#output_dir: "data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/ml/outputs"
 seed: 42                  # For reproducibility
 notes: "South Africa EEG with monopolar montage and attention pooling"
 tags: ["monopolar", "attention", "south_africa"]
@@ -17,7 +15,6 @@ tags: ["monopolar", "attention", "south_africa"]
 # ------------------------
 # 🧠 Model Configuration
 # ------------------------
-pooling_type: "attention"
 dropout_rate: 0.5
 kernel_length: 64
 
@@ -27,7 +24,6 @@ kernel_length: 64
 batch_size: 4
 epochs: 100
 lr: 0.001
-# device, i.e. whether to use GPU or not, is set dynamically in code
 
 # ------------------------
 # 🛑 Early Stopping

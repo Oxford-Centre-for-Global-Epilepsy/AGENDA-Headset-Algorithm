@@ -1,13 +1,17 @@
 #!/bin/bash
 
-if [ -z "$1" ]; then
-  echo "❌ Usage: ./run_fold.sh <fold_number>"
-  exit 1
-fi
+# Default values
+DEFAULT_FOLD=0
+DEFAULT_POOLING_TYPE="attention"
 
-FOLD=$1
-sbatch --export=ALL,FOLD=$FOLD \
-       --job-name=AGENDA_Algorithm_Training_fold_$FOLD \
-       --output=logs/fold_${FOLD}_%j.out \
-       --error=logs/fold_${FOLD}_%j.err \
+# Read input parameters or use defaults
+FOLD=${1:-$DEFAULT_FOLD}
+POOLING_TYPE=${2:-$DEFAULT_POOLING_TYPE}
+
+echo "📂 Running training for fold $FOLD with pooling type '$POOLING_TYPE'..."
+
+sbatch --export=ALL,FOLD=$FOLD,POOLING_TYPE=$POOLING_TYPE \
+       --job-name=AGENDA_Training_fold_${FOLD}_${POOLING_TYPE}_pooling \
+       --output=logs/${POOLING_TYPE}_pooling/fold_${FOLD}_%j.out \
+       --error=logs/${POOLING_TYPE}_pooling/fold_${FOLD}_%j.err \
        shell_scripts/train.slurm

@@ -32,7 +32,7 @@ def parse_config():
 
     if not config.get("run_id"):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        config.run_id = f"{config.experiment_name}_{timestamp}_{uuid.uuid4().hex[:6]}"
+        config.run_id = f"{timestamp}_{uuid.uuid4().hex[:6]}"
 
     # Dynamically define output directory
     base_data_dir = os.environ.get("DATA")
@@ -42,14 +42,16 @@ def parse_config():
     # Get the path to the dataset to be used
     config.output_dir = os.path.join(
         base_data_dir,
-        "AGENDA-Headset-Algorithm/ml/outputs",
-        config.run_id
+        "AGENDA-Headset-Algorithm/outputs",
+        config.experiment_name,
+        config.run_id,
+        f"fold_{config.fold_index}"
     )
 
     # Path to the dataset to be used (dataset name is specified in the yaml config file)
     config.data_path = os.path.join(
         base_data_dir,
-        "AGENDA-Headset-Algorithm/data/final_processed/",
+        "AGENDA-Headset-Algorithm/data/final_processed",
         config.dataset_name+".h5"
     )
 
@@ -109,6 +111,7 @@ def main():
     with mlflow.start_run(run_name=config.run_id):
         mlflow.log_params({
             "experiment_name": config.experiment_name,
+            "dataset_name": config.dataset_name, 
             "fold_index": config.fold_index,
             "batch_size": config.batch_size,
             "epochs": config.epochs,
