@@ -79,6 +79,12 @@ def load_checkpoint(path, model, optimizer):
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     return checkpoint["epoch"], checkpoint["best_val_loss"]
 
+def get_model_size(model):
+    param_size = sum(p.nelement() * p.element_size() for p in model.parameters())
+    buffer_size = sum(b.nelement() * b.element_size() for b in model.buffers())
+    size_all_bytes = param_size + buffer_size
+    return size_all_bytes / 1e6  # Convert to MB
+
 def main():
     config = parse_config()
     os.makedirs(config.output_dir, exist_ok=True)
@@ -242,6 +248,9 @@ def main():
                 f1 = stat["f1"]
                 print(f"  {level.upper()} - Acc: {acc:.4f}, F1: {f1:.4f}")
 
+            # Calculate the size of the model
+            model_size = get_model_size(model)
+
             mlflow.log_metrics({
                 "train_loss": avg_loss,
                 "val_loss": val_loss,
@@ -250,7 +259,8 @@ def main():
                 "level2_accuracy": metrics["level2"]["accuracy"],
                 "level2_f1": metrics["level2"]["f1"],
                 "level3_accuracy": metrics["level3"]["accuracy"],
-                "level3_f1": metrics["level3"]["f1"]
+                "level3_f1": metrics["level3"]["f1"], 
+                "model_size": model_size
             }, step=epoch + 1)
 
             with open(log_path, mode="a", newline="") as f:
@@ -266,7 +276,8 @@ def main():
                     "level2_accuracy": metrics["level2"]["accuracy"],
                     "level2_f1": metrics["level2"]["f1"],
                     "level3_accuracy": metrics["level3"]["accuracy"],
-                    "level3_f1": metrics["level3"]["f1"]
+                    "level3_f1": metrics["level3"]["f1"], 
+                    "model_size": model_size
                 })
 
             early_stopping(val_loss)
