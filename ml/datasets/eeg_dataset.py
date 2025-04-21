@@ -29,6 +29,11 @@ class EEGRecordingDataset(Dataset):
         with h5py.File(self.h5_file_path, 'r') as f:
             self.subject_ids = list(f[self.dataset_name].keys())
             self.max_epochs = f.attrs["max_epochs"]
+            
+            # Get the channel names
+            first_subject = self.subject_ids[0]
+            channel_names_raw = f[self.dataset_name][first_subject].attrs["channel_names"]
+            self.channel_names = [name.decode("utf-8") if isinstance(name, bytes) else name for name in channel_names_raw]
 
     def __len__(self):
         return len(self.subject_ids)
@@ -89,8 +94,12 @@ class EEGRecordingDataset(Dataset):
             "label_mask": torch.tensor(label_mask, dtype=torch.bool),      # [3]
             "attention_mask": torch.tensor(epoch_mask, dtype=torch.bool),  # [E]
             "subject_id": subject_id
+
         }
     
+    def get_channel_names(self):
+        return self.channel_names
+
     def get_subject_ids(self):
         """Returns list of subject IDs in the dataset."""
         return self.subject_ids

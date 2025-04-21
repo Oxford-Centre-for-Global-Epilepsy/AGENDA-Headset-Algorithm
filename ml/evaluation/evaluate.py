@@ -14,6 +14,7 @@ from ml.datasets.eeg_dataset import EEGRecordingDataset
 from ml.utils.splits import create_stratified_datasets, create_kfold_stratified_datasets
 from ml.models.hierarchical_classifier import EEGNetHierarchicalClassifier
 from ml.interpretability.feature_projection import project_features, plot_projection
+from ml.interpretability.saliency import compute_vanilla_saliency, simplify_saliency_map, plot_saliency_map
 from omegaconf import OmegaConf
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -40,6 +41,65 @@ def generate_eeg_attention_overlay(model, dataloader, config, level_index=0, cha
                 output_path=output_path
             )
         break
+
+def generate_saliency_maps(model, dataloader, config, level_index=0, class_names=None):
+    print("🔬 Generating saliency maps...")
+    channel_names = getattr(dataloader.dataset, "channel_names", [f"Ch {i}" for i in range(21)])
+
+    for batch in dataloader:
+        x = batch["data"].to(config.device)         # [1, E, C, T]
+        y = batch["labels"].to(config.device)       # [1, 3]
+        m = batch["label_mask"].to(config.device)   # [1, 3]
+
+        epoch = x[0, 0].unsqueeze(0).unsqueeze(0)    # [1, 1, C, T]
+        label = y[0, level_index].item()
+        label_valid = bool(m[0, level_index].item())
+
+        # --- DEBUG ---
+        print(f"Level {level_index + 1} → True label: {label}, Valid: {label_valid}")
+
+        # Get full model logits
+        output = model(epoch)
+        level_logits = output[f"level{level_index + 1}_logits"]
+        pred_class_idx = level_logits.argmax(dim=1).item()
+
+        # Choose target class for saliency
+        class_idx = label if label_valid else pred_class_idx
+
+        # Compute saliency
+        epoch.requires_grad = True
+        saliency = compute_vanilla_saliency(model.eegnet, epoch, class_idx=class_idx)
+        saliency_map = simplify_saliency_map(saliency, reduce="none", normalize=True)  # [C, T]
+
+        # Plot heatmap
+        import seaborn as sns
+        import pandas as pd
+        timepoints = np.arange(saliency_map.shape[1])
+        df = pd.DataFrame(saliency_map, index=channel_names, columns=timepoints)
+
+        plt.figure(figsize=(12, 10))
+        sns.heatmap(df, cmap="Reds", cbar_kws={"label": "Saliency"}, xticklabels=20, yticklabels=True)
+
+        true_label = (
+            class_names[label] if label_valid and class_names and label < len(class_names)
+            else "N/A"
+        )
+        pred_label = (
+            class_names[pred_class_idx] if class_names and pred_class_idx < len(class_names)
+            else str(pred_class_idx)
+        )
+
+        plt.title(f"Saliency Map - Vanilla Gradient\nTrue: {true_label} | Predicted: {pred_label}")
+        plt.xlabel("Time (samples)")
+        plt.ylabel("Channels")
+        plt.tight_layout()
+
+        output_path = os.path.join(config.output_dir, f"saliency_map_level{level_index + 1}.png")
+        plt.savefig(output_path, dpi=300)
+        plt.close()
+        print(f"✅ Saved saliency map to {output_path}")
+        break  # only first sample
+
 
 def generate_feature_projection(model, dataloader, config, level_index, class_labels, class_names, method="umap"):
     """
@@ -95,6 +155,9 @@ def generate_feature_projection(model, dataloader, config, level_index, class_la
 
 def evaluate(config, model, test_loader, levels, labels_all, class_names_all, include_attention_on_eeg):
     
+    # Grab channel names from the dataset if available
+    channel_names = getattr(test_loader.dataset, "channel_names", [f"Ch {i}" for i in range(21)])
+
     # Check if the attention overlay on the EEG should be included 
     if include_attention_on_eeg:
         if config.pooling_type == "attention":
@@ -106,7 +169,16 @@ def evaluate(config, model, test_loader, levels, labels_all, class_names_all, in
                 channel_names=[f"Ch {i}" for i in range(21)]
             )
 
-    # Calculate the feature projections 
+    # Calculate Saliency maps
+    if config.pooling_type in ["mean", "attention", "transformer"]:
+        generate_saliency_maps(
+            model=model,
+            dataloader=test_loader,
+            config=config,
+            level_index=0,
+        )
+
+    # Calculate the feature projections - UMAP or t-SNE
     for level_index in range(len(levels)):
         generate_feature_projection(
             model,

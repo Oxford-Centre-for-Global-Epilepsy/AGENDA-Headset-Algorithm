@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import os
 import torch
 
 def compute_vanilla_saliency(model, input_tensor, class_idx=None):
@@ -56,3 +58,27 @@ def simplify_saliency_map(saliency_tensor, reduce="none", normalize=True):
         sal /= sal.max() + 1e-8
 
     return sal
+
+def plot_saliency_map(saliency, channel_names=None, save_path=None, title="Saliency Map"):
+    """
+    Plots a 2D saliency map heatmap.
+
+    Args:
+        saliency (np.ndarray): [C, T] saliency map
+        channel_names (list): Optional list of channel names
+        save_path (str): If provided, saves the plot
+        title (str): Title of the plot
+    """
+    plt.figure(figsize=(10, 4))
+    sns = __import__('seaborn')  # Lazy import to avoid mandatory dependency
+    ax = sns.heatmap(saliency, cmap="hot", cbar=True, yticklabels=channel_names)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Channels")
+    plt.title(title)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+        print(f"✅ Saved saliency map to {save_path}")
+        plt.close()
+    else:
+        plt.show()
