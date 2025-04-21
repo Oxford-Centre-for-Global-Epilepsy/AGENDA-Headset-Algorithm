@@ -1,26 +1,277 @@
-from sklearn.metrics import accuracy_score, classification_report
+import os
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import argparse
+from sklearn.metrics import confusion_matrix
 
-# Load model
-model = EEGNet(num_classes=2)
-model.load_state_dict(torch.load("models/eegnet_model.pth"))
-model.eval()
+from ml.interpretability.attention_visuals import (
+    plot_attention_weights_by_level,
+    plot_multichannel_eeg_with_attention
+)
+from ml.datasets.eeg_dataset import EEGRecordingDataset
+from ml.utils.splits import create_stratified_datasets, create_kfold_stratified_datasets
+from ml.models.hierarchical_classifier import EEGNetHierarchicalClassifier
+from ml.interpretability.feature_projection import project_features, plot_projection
+from omegaconf import OmegaConf
 
-# Load test data
-test_dataset = EEGDataset("data/preprocessed/test.h5")
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-# Run inference
-all_preds = []
-all_labels = []
-with torch.no_grad():
-    for data, labels in test_loader:
-        outputs = model(data)
-        preds = outputs.argmax(dim=1)
-        all_preds.extend(preds.cpu().numpy())
-        all_labels.extend(labels.cpu().numpy())
+def generate_eeg_attention_overlay(model, dataloader, config, level_index=0, channel_names=None):
+    print("🧠 Generating attention overlay on EEG traces...")
+    for batch in dataloader:
+        x = batch["data"].to(config.device)
+        attn_mask = batch["attention_mask"].to(config.device)
 
-# Compute metrics
-accuracy = accuracy_score(all_labels, all_preds)
-print(f"Test Accuracy: {accuracy:.4f}")
-print(classification_report(all_labels, all_preds))
+        out = model(x, attention_mask=attn_mask, return_attn_weights=True)
+        attn_weights = out.get("attention_weights")
+
+        if attn_weights is not None:
+            attn_weights = attn_weights.squeeze(0).detach().cpu().numpy()
+            eeg = batch["data"].squeeze(0).cpu().numpy()  # [E, C, T]
+
+            output_path = os.path.join(config.output_dir, f"eeg_with_attention_level{level_index + 1}.png")
+            plot_multichannel_eeg_with_attention(
+                eeg,
+                attn_weights,
+                channel_names=channel_names,
+                epoch_len=eeg.shape[-1],
+                output_path=output_path
+            )
+        break
+
+def generate_feature_projection(model, dataloader, config, level_index, class_labels, class_names, method="umap"):
+    """
+    Generates a 2D feature projection plot (e.g., UMAP or t-SNE) for a given level of the hierarchy.
+
+    Args:
+        model: Trained EEGNetHierarchicalClassifier model.
+        dataloader: DataLoader over the evaluation dataset.
+        config: Configuration object with output_dir and device.
+        level_index: 0 (level1), 1 (level2), or 2 (level3).
+        class_labels: List of raw label values for this level (e.g., [0, 1]).
+        class_names: List of string names for this level (e.g., ["Neurotypical", "Epileptic"]).
+        method: Dimensionality reduction method, e.g., "umap" or "tsne".
+    """
+    print(f"📉 Generating feature projection for Level {level_index + 1}...")
+    all_features = []
+    all_labels = []
+
+    with torch.no_grad():
+        for batch in dataloader:
+            x = batch["data"].to(config.device)
+            y = batch["labels"].to(config.device)[:, level_index]
+            m = batch["label_mask"].to(config.device)[:, level_index].bool()
+            attn_mask = batch["attention_mask"].to(config.device)
+
+            out = model(x, attention_mask=attn_mask, return_features=True)
+            feats = out.get("features")
+
+            if feats is not None and m.any():
+                feats = feats[m].detach().cpu()
+                y = y[m].cpu()
+                all_features.append(feats)
+                all_labels.append(y)
+
+    if not all_features:
+        print(f"⚠️ No valid features found for Level {level_index + 1}. Skipping projection.")
+        return
+
+    features = torch.cat(all_features, dim=0)
+    labels = torch.cat(all_labels, dim=0).numpy()
+
+    projected = project_features(features, labels=labels, method=method)
+    plot_path = os.path.join(config.output_dir, f"feature_projection_level{level_index + 1}.png")
+    label_name_dict = {v: name for v, name in zip(class_labels, class_names)}
+
+    plot_projection(
+        projected_features=projected,
+        labels=labels,
+        label_names=label_name_dict,
+        title=f"{method} Feature Projection (Level {level_index + 1})",
+        save_path=plot_path
+    )
+
+def evaluate(config, model, test_loader, levels, labels_all, class_names_all, include_attention_on_eeg):
+    
+    # Check if the attention overlay on the EEG should be included 
+    if include_attention_on_eeg:
+        if config.pooling_type == "attention":
+            generate_eeg_attention_overlay(
+                model,
+                test_loader,
+                config,
+                level_index=0,
+                channel_names=[f"Ch {i}" for i in range(21)]
+            )
+
+    # Calculate the feature projections 
+    for level_index in range(len(levels)):
+        generate_feature_projection(
+            model,
+            test_loader,
+            config,
+            level_index=level_index,
+            class_labels=labels_all[level_index],
+            class_names=class_names_all[level_index],
+            method="umap"  # or "tsne" if you prefer
+        )
+
+    all_preds = []
+    all_targets = []
+    all_masks = []
+
+    with torch.no_grad():
+        for batch in test_loader:
+            x = batch["data"].to(config.device)
+            y = batch["labels"].to(config.device)
+            m = batch["label_mask"].to(config.device)
+            attn_mask = batch["attention_mask"].to(config.device)
+
+            out = model(x, attention_mask=attn_mask)
+            preds = torch.stack([
+                out["level1_logits"].argmax(dim=1),
+                out["level2_logits"].argmax(dim=1),
+                out["level3_logits"].argmax(dim=1)
+            ], dim=1)
+
+            all_preds.append(preds)
+            all_targets.append(y)
+            all_masks.append(m)
+
+    all_preds = torch.cat(all_preds, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)
+    all_masks = torch.cat(all_masks, dim=0)
+
+    for i, level in enumerate(levels):
+        valid = all_masks[:, i].bool()
+        if valid.sum() == 0:
+            print(f"⚠️ Skipping {level} — no valid mask entries.")
+            continue
+
+        y_true_raw = all_targets[valid, i].cpu().numpy()
+        y_pred_raw = all_preds[valid, i].cpu().numpy()
+
+        print(f"📊 {level} raw y_true values: {np.unique(y_true_raw)}")
+        print(f"📊 {level} raw y_pred values: {np.unique(y_pred_raw)}")
+
+        label_mapping = {v: j for j, v in enumerate(labels_all[i])}
+        y_true = np.array([label_mapping.get(lbl, -1) for lbl in y_true_raw])
+        y_pred = y_pred_raw
+
+        valid_indices = (y_true != -1)
+        if valid_indices.sum() == 0:
+            print(f"⚠️ Skipping {level} — y_true contains none of the expected labels {labels_all[i]}.")
+            continue
+
+        y_true = y_true[valid_indices]
+        y_pred = y_pred[valid_indices]
+
+        cm_raw = confusion_matrix(y_true, y_pred, labels=[0, 1])
+        cm_normalized = np.nan_to_num(
+            cm_raw.astype("float") / cm_raw.sum(axis=1, keepdims=True), nan=0.0
+        )
+
+        output_file = os.path.join(config.output_dir, f"confusion_matrix_{level}.png")
+        plot_confusion(cm_normalized, cm_raw, class_names_all[i], f"Confusion Matrix - {level.capitalize()}", output_file)
+        print(f"✅ Saved {level} confusion matrix to {output_file}")
+
+        if config.pooling_type == "attention":
+            plot_attention_weights_by_level(model, test_loader, config, i, labels_all[i], class_names_all[i])
+
+def plot_confusion(cm, cm_raw, class_names, title, output_path):
+    plt.figure(figsize=(6, 5))
+    ax = sns.heatmap(
+        cm,
+        annot=True,
+        fmt=".2f",
+        cmap="Blues",
+        xticklabels=class_names,
+        yticklabels=class_names,
+        cbar=True
+    )
+    for i in range(len(class_names)):
+        for j in range(len(class_names)):
+            count = int(cm_raw[i, j])
+            text = f"\n({count})"
+            ax.text(j + 0.5, i + 0.65, text, ha='center', va='top', color='black', fontsize=8)
+    plt.title(title)
+    plt.ylabel("True label")
+    plt.xlabel("Predicted label")
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to config YAML")
+    parser.add_argument("overrides", nargs=argparse.REMAINDER, help="Optional override arguments")
+    args = parser.parse_args()
+
+    base_config = OmegaConf.load(args.config)
+    override_config = OmegaConf.from_dotlist(args.overrides or [])
+    config = OmegaConf.merge(base_config, override_config)
+
+    config.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    label_map = {
+        'neurotypical': 0,
+        'epileptic': 1,
+        'focal': 2,
+        'generalized': 3,
+        'left': 4,
+        'right': 5
+    }
+
+    levels = ["level1", "level2", "level3"]
+    class_names_all = [
+        ["Neurotypical", "Epileptic"],
+        ["Focal", "Generalized"],
+        ["Left", "Right"]
+    ]
+    labels_all = [
+        [0, 1],
+        [2, 3],
+        [4, 5]
+    ]
+
+    if config.k_folds > 1:
+        _, val_dataset, _ = create_kfold_stratified_datasets(
+            h5_path=config.data_path,
+            dataset_name=config.dataset_name,
+            label_map=label_map,
+            k_folds=config.k_folds,
+            fold_index=config.fold_index,
+            seed=config.seed
+        )
+    else:
+        _, val_dataset, _ = create_stratified_datasets(
+            h5_path=config.data_path,
+            dataset_name=config.dataset_name,
+            label_map=label_map,
+            ratios=(0.7, 0.15, 0.15),
+            seed=config.seed
+        )
+
+    test_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1, shuffle=False)
+
+    eegnet_args = {
+        "num_channels": 21,
+        "num_samples": 129,
+        "dropout_rate": config.dropout_rate,
+        "kernel_length": config.kernel_length
+    }
+    pooling_args = {"hidden_dim": 64} if config.pooling_type == "attention" else {}
+    model = EEGNetHierarchicalClassifier(
+        eegnet_args=eegnet_args,
+        pooling_type=config.pooling_type,
+        pooling_args=pooling_args
+    )
+    model.load_state_dict(torch.load(os.path.join(config.output_dir, "best_model.pt"))["model_state_dict"])
+    model.eval().to(config.device)
+
+    evaluate(config, model, test_loader, levels, labels_all, class_names_all, include_attention_on_eeg=False)
+
+if __name__ == "__main__":
+    main()

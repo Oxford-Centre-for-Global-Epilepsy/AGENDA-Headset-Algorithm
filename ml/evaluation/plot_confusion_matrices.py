@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
@@ -9,8 +10,8 @@ from ml.datasets.eeg_dataset import EEGRecordingDataset
 from ml.utils.splits import create_stratified_datasets, create_kfold_stratified_datasets
 from ml.models.hierarchical_classifier import EEGNetHierarchicalClassifier
 from ml.training.metrics import compute_per_level_metrics
+from ml.evaluation.attention_visualization import plot_eeg_with_attention
 from omegaconf import OmegaConf
-
 
 def load_model(model_path, config):
     eegnet_args = {
@@ -30,10 +31,22 @@ def load_model(model_path, config):
     model.to(config.device)
     return model
 
-
-def plot_confusion(cm, class_names, title, output_path):
+def plot_confusion(cm, cm_raw, class_names, title, output_path):
     plt.figure(figsize=(6, 5))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=class_names, yticklabels=class_names)
+    ax = sns.heatmap(
+        cm,
+        annot=True,
+        fmt=".2f",
+        cmap="Blues",
+        xticklabels=class_names,
+        yticklabels=class_names,
+        cbar=True
+    )
+    for i in range(len(class_names)):
+        for j in range(len(class_names)):
+            count = int(cm_raw[i, j])
+            text = f"\n({count})"
+            ax.text(j + 0.5, i + 0.65, text, ha='center', va='top', color='black', fontsize=8)
     plt.title(title)
     plt.ylabel("True label")
     plt.xlabel("Predicted label")
@@ -41,29 +54,32 @@ def plot_confusion(cm, class_names, title, output_path):
     plt.savefig(output_path)
     plt.close()
 
+def main(config_path, overrides=None):
+    base_config = OmegaConf.load(config_path)
+    override_config = OmegaConf.from_dotlist(overrides or [])
+    config = OmegaConf.merge(base_config, override_config)
 
-def main(config_path):
-    config = OmegaConf.load(config_path)
     config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Dynamically construct output path using $DATA env var
     data_root = os.environ.get("DATA")
     if data_root is None:
         raise EnvironmentError("❌ The $DATA environment variable is not set.")
 
-    config.output_dir = os.path.join(
-        data_root,
-        "AGENDA-Headset-Algorithm/outputs",
-        #config.run_id or config.experiment_name
-        "run_fold_1"
-    )
+    if not os.path.isabs(config.output_dir):
+        config.output_dir = os.path.join(data_root, config.output_dir)
 
-    # Path to the dataset to be used (dataset name is specified in the yaml config file)
     config.data_path = os.path.join(
         data_root,
         "AGENDA-Headset-Algorithm/data/final_processed/",
-        config.dataset_name+".h5"
+        config.dataset_name + ".h5"
     )
+
+    print(f"📦 Using dataset: {config.dataset_name}")
+    print(f"📂 Data path: {config.data_path}")
+    print(f"📁 Output dir: {config.output_dir}")
+
+    if not os.path.exists(config.data_path):
+        raise FileNotFoundError(f"❌ Dataset file not found: {config.data_path}")
 
     label_map = {
         'neurotypical': 0,
@@ -75,7 +91,7 @@ def main(config_path):
     }
 
     if config.k_folds > 1:
-        _, _, test_dataset = create_kfold_stratified_datasets(
+        _, val_dataset, _ = create_kfold_stratified_datasets(
             h5_path=config.data_path,
             dataset_name=config.dataset_name,
             label_map=label_map,
@@ -84,7 +100,7 @@ def main(config_path):
             seed=config.seed
         )
     else:
-        _, _, test_dataset = create_stratified_datasets(
+        _, val_dataset, _ = create_stratified_datasets(
             h5_path=config.data_path,
             dataset_name=config.dataset_name,
             label_map=label_map,
@@ -92,9 +108,11 @@ def main(config_path):
             seed=config.seed
         )
 
-    test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
+    test_loader = DataLoader(val_dataset, batch_size=8, shuffle=False)
     best_model_path = os.path.join(config.output_dir, "best_model.pt")
-    #best_model_path = os.path.join(config.output_dir, "best_model.pt")
+    if not os.path.exists(best_model_path):
+        raise FileNotFoundError(f"❌ Best model not found at: {best_model_path}")
+
     model = load_model(best_model_path, config)
 
     all_preds = []
@@ -124,29 +142,62 @@ def main(config_path):
     all_masks = torch.cat(all_masks, dim=0)
 
     levels = ["level1", "level2", "level3"]
-    class_names = [
+    class_names_all = [
         ["Neurotypical", "Epileptic"],
         ["Focal", "Generalized"],
         ["Left", "Right"]
+    ]
+    labels_all = [
+        [0, 1],
+        [2, 3],
+        [4, 5]
     ]
 
     for i, level in enumerate(levels):
         valid = all_masks[:, i].bool()
         if valid.sum() == 0:
+            print(f"⚠️ Skipping {level} — no valid mask entries.")
             continue
 
-        y_true = all_targets[valid, i].cpu().numpy()
-        y_pred = all_preds[valid, i].cpu().numpy()
-        cm = confusion_matrix(y_true, y_pred)
+        y_true_raw = all_targets[valid, i].cpu().numpy()
+        y_pred_raw = all_preds[valid, i].cpu().numpy()
+
+        label_mapping = {v: j for j, v in enumerate(labels_all[i])}
+        y_true = np.array([label_mapping.get(lbl, -1) for lbl in y_true_raw])
+        y_pred = y_pred_raw  # Already in 0/1
+
+        valid_indices = (y_true != -1) & (y_pred != -1)
+        if valid_indices.sum() == 0:
+            print(f"⚠️ Skipping {level} — y_true contains none of the expected labels {labels_all[i]}.")
+            continue
+
+        y_true = y_true[valid_indices]
+        y_pred = y_pred[valid_indices]
+
+        cm_raw = confusion_matrix(y_true, y_pred, labels=[0, 1])
+        cm_normalized = np.nan_to_num(
+            cm_raw.astype("float") / cm_raw.sum(axis=1, keepdims=True), nan=0.0
+        )
 
         output_file = os.path.join(config.output_dir, f"confusion_matrix_{level}.png")
-        plot_confusion(cm, class_names[i], f"Confusion Matrix - {level.capitalize()}", output_file)
+        plot_confusion(cm_normalized, cm_raw, class_names_all[i], f"Confusion Matrix - {level.capitalize()}", output_file)
         print(f"✅ Saved {level} confusion matrix to {output_file}")
 
+    if config.pooling_type == "attention":
+        for i in range(3):
+            plot_attention_weights_by_level(
+                model=model,
+                dataloader=test_loader,
+                config=config,
+                level_index=i,
+                class_labels=labels_all[i],
+                class_names=class_names_all[i]
+            )
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path to training config YAML")
+    parser.add_argument("overrides", nargs=argparse.REMAINDER)
     args = parser.parse_args()
-    main(args.config)
+    main(args.config, args.overrides)

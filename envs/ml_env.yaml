@@ -21,6 +21,9 @@ dependencies:
   - h5py
   - mne
 
+  # Interpretability
+  - umap-learn
+
   # Workflow and data pipeline
   - tqdm
   - pyyaml

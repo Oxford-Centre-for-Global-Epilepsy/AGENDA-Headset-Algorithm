@@ -53,7 +53,9 @@ class EEGNetHierarchicalClassifier(nn.Module):
         D = epoch_features.shape[-1]
         epoch_features = epoch_features.view(B, E, D)  # [B, E, D]
 
-        if return_attn_weights:
+        # Check if using Attention pooling - if so, set so that attention can be returned
+        attn_weights = None
+        if isinstance(self.pool, AttentionPooling):
             pooled, attn_weights = self.pool(epoch_features, mask=attention_mask, return_weights=True)
         else:
             pooled = self.pool(epoch_features, mask=attention_mask)

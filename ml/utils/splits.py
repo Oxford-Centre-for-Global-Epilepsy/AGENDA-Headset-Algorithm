@@ -93,4 +93,4 @@ def create_kfold_stratified_datasets(h5_path, dataset_name, label_map, k_folds, 
         ds.filter_subjects(ids)
         return ds
 
-    return make_filtered(train_subjects), make_filtered(val_subjects), None  # test set handled separately
+    return make_filtered(train_subjects), make_filtered(val_subjects),  make_filtered(val_subjects)  # test and val sets are the same here - need to consider handling them separately for final performance evaluation
