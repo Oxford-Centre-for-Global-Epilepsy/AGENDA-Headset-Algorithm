@@ -102,9 +102,9 @@ def main():
     log_path = os.path.join(config.output_dir, "metrics_log.csv")
     log_fields = [
         "run_id", "fold", "epoch", "train_loss", "val_loss",
-        "level1_accuracy", "level1_f1",
-        "level2_accuracy", "level2_f1",
-        "level3_accuracy", "level3_f1"
+        "level1_accuracy", "level1_f1", "level1_precision", "level1_recall", "level1_roc_auc",
+        "level2_accuracy", "level2_f1", "level2_precision", "level2_recall", "level2_roc_auc",
+        "level3_accuracy", "level3_f1", "level3_precision", "level3_recall", "level3_roc_auc"
     ]
 
     with open(log_path, mode="w", newline="") as f:
@@ -246,7 +246,10 @@ def main():
             for level, stat in metrics.items():
                 acc = stat["accuracy"]
                 f1 = stat["f1"]
-                print(f"  {level.upper()} - Acc: {acc:.4f}, F1: {f1:.4f}")
+                precision = stat["precision"]
+                recall = stat["recall"]
+                roc_auc = stat["roc_auc"]
+                print(f"  {level.upper()} - Acc: {acc:.4f}, F1: {f1:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, ROC_AUC: {roc_auc:.4f}")
 
             # Calculate the size of the model
             model_size = get_model_size(model)

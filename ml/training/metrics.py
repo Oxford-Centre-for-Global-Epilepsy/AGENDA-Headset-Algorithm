@@ -1,4 +1,4 @@
-from sklearn.metrics import f1_score, accuracy_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, roc_auc_score
 import numpy as np
 import torch
 
@@ -20,7 +20,7 @@ def compute_per_level_metrics(preds, targets, masks, label_names=None):
     for level in range(3):
         valid = masks[:, level].bool()
         if valid.sum() == 0:
-            metrics[f"level{level+1}"] = {"accuracy": None, "f1": None}
+            metrics[f"level{level+1}"] = {"accuracy": None, "f1": None, "precision": None, "recall": None, "roc_auc": None}
             continue
 
         y_true = targets[valid, level]
@@ -34,10 +34,16 @@ def compute_per_level_metrics(preds, targets, masks, label_names=None):
 
         acc = accuracy_score(y_true.cpu().numpy(), y_pred.cpu().numpy())
         f1 = f1_score(y_true.cpu().numpy(), y_pred.cpu().numpy(), average="macro")
+        precision = precision_score(y_true.cpu().numpy(), y_pred.cpu().numpy(), average="macro")
+        recall = recall_score(y_true.cpu().numpy(), y_pred.cpu().numpy(), average="macro")
+        roc_auc = roc_auc_score(y_true.cpu().numpy(), y_pred.cpu().numpy(), average="macro")
 
         metrics[f"level{level+1}"] = {
             "accuracy": acc,
-            "f1": f1
+            "f1": f1,
+            "precision": precision,
+            "recall": recall,
+            "roc_auc": roc_auc
         }
 
     return metrics
