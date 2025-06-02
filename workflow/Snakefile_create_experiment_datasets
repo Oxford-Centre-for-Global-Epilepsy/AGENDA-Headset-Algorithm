@@ -1,0 +1,72 @@
+import os
+import yaml
+
+# Specify the path to the project
+DATA_PATH = os.getenv("DATA")
+if not DATA_PATH:
+    raise ValueError("ERROR: The $DATA environment variable is not set!")
+project_folder_path = f"{DATA_PATH}/AGENDA-Headset-Algorithm"
+
+# Specify the config file for the experiment
+experiment_configfile_path = "config/electrode_ablation_experiment_datasets_config.yaml"
+
+# ✅ Load Configuration from YAML (for site-specific and montage-specific data processing)
+with open(experiment_configfile_path, "r") as file:
+    config = yaml.safe_load(file)
+
+# Load the experiment dataset details (sites, montage types in dataset, etc.)
+EXPERIMENTS = config.get("experiments", {})
+
+# Now make the output directories for the experiment datasets
+#experiment_datasets_output_dir = []
+EXPERIMENT_DATASET_FILEPATHS = []
+
+for experiment_name, details in EXPERIMENTS.items():
+    # Base path for the experiment datasets
+    output_dir = f"data/experiment_datasets/{experiment_name}"
+    
+    # Get the sites to use for the experiment
+    experiment_sites = details.get("sites_to_include", [])
+
+    # Get the experiment montage types to use
+    experiment_montage_types = details.get("montages_to_process", [])
+
+    # Get the montage types to use for the experiment
+    experiment_montage_pairs = [(montage_type, montage_name) 
+                 for montage_type, montage_list in experiment_montage_types.items() 
+                 for montage_name in montage_list]
+
+    # Create the output directory for this experiment
+    for site in experiment_sites:
+        for montage_type, montage_name in experiment_montage_pairs:
+            output_path = f"{output_dir}/{site}/{montage_type}/{montage_name}/processed_dataset.h5"
+            EXPERIMENT_DATASET_FILEPATHS.append(output_path)
+
+# Print the output directories for the experiment datasets
+print(EXPERIMENT_DATASET_FILEPATHS)
+
+rule all:
+    input:
+        output_hdf5 = expand(project_folder_path + "/{experiment_data_output_dir}", experiment_data_output_dir=EXPERIMENT_DATASET_FILEPATHS)
+        
+rule create_experiment_datasets:
+    input:
+        configfile="config/electrode_ablation_experiment_datasets_config.yaml"
+    output:
+        output_hdf5 = "{project_folder_path}/data/experiment_datasets/{experiment_name}/{site}/{montage_type}/{montage_name}/processed_dataset.h5"
+    params:
+        project_filepath=project_folder_path
+    conda:
+        "envs/combine_hdf5.yaml"  # path to your conda env if needed
+    shell:
+        """
+        mkdir -p $(dirname {output.output_hdf5})
+
+        python scripts/data_preprocessing/create_experiment_datasets.py \
+            --experiment_name "{wildcards.experiment_name}" \
+            --site "{wildcards.site}" \
+            --montage_type "{wildcards.montage_type}" \
+            --montage_name "{wildcards.montage_name}" \
+            --output {output.output_hdf5} \
+            --source_filepath {params.project_filepath}
+        """

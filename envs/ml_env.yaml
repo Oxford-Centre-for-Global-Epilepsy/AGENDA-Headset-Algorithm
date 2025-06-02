@@ -45,3 +45,4 @@ dependencies:
       #- wandb
       - mlflow-skinny
       - omegaconf
+      - iterative-stratification

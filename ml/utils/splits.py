@@ -1,5 +1,7 @@
 from collections import defaultdict
 import random
+import json
+
 from ml.datasets.eeg_dataset import EEGRecordingDataset
 
 def stratified_split_subjects(subject_to_labels, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42):
@@ -44,8 +46,7 @@ def create_stratified_datasets(h5_path, dataset_name, label_map, ratios=(0.7, 0.
     splits = stratified_split_subjects(subject_to_labels, *ratios, seed=seed)
 
     def make_filtered_dataset(split_ids):
-        ds = EEGRecordingDataset(h5_path, dataset_name, label_map)
-        ds.filter_subjects(split_ids)
+        ds = EEGRecordingDataset(h5_path, dataset_name, label_map, subject_ids=split_ids)
         return ds
 
     return (
@@ -89,8 +90,21 @@ def create_kfold_stratified_datasets(h5_path, dataset_name, label_map, k_folds, 
     val_subjects = [subjects[i] for i in val_ids]
 
     def make_filtered(ids):
-        ds = EEGRecordingDataset(h5_path, dataset_name, label_map)
-        ds.filter_subjects(ids)
+        ds = EEGRecordingDataset(h5_path, dataset_name, label_map, subject_ids=split_ids)
         return ds
 
     return make_filtered(train_subjects), make_filtered(val_subjects),  make_filtered(val_subjects)  # test and val sets are the same here - need to consider handling them separately for final performance evaluation
+
+def load_split_indices(json_path):
+    """
+    Load subject split indices (train/val/test) from a JSON file.
+
+    Args:
+        json_path (str): Path to the fold split JSON file.
+
+    Returns:
+        dict: Dictionary with keys 'train', 'val', and/or 'test' containing lists of subject IDs.
+    """
+    with open(json_path, "r") as f:
+        splits = json.load(f)
+    return splits

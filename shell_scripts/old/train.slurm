@@ -18,10 +18,7 @@ export PYTHONPATH=$PWD:$PYTHONPATH
 
 # Run training
 python -m ml.training.train \
-  --config configs/experiments/electrode_ablation/standard_10_20.yaml \
-  experiment_name=$EXPERIMENT_NAME \
-  dataset_name=$DATASET_NAME \
-  dataset.fold_index=$FOLD \
-  model.pooling_type=$POOLING_TYPE \
-  seed=$SEED \
-  dataset.drop_electrodes="$OMIT_LIST"
+  --config configs/${POOLING_TYPE}_pooling_model.yaml \
+  fold_index=$FOLD \
+  pooling_type=$POOLING_TYPE \
+  resume=true

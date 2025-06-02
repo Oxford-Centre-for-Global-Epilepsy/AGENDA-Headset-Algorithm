@@ -14,12 +14,20 @@ def find_all_h5_files(base_path, sites):
                 matched_files.append(os.path.join(root, file))
     return matched_files
 
-def combine_hdf5_files(config, output_file, project_path):
-    dataset_name = config["dataset_name"]
-    montage_type = config["montage_type"]
-    montage_name = config["montage_name"]
-    sites = config.get("sites_to_include", [])
-    input_files = config.get("input_files", None)
+def is_valid_hdf5(file_path):
+    try:
+        with h5py.File(file_path, 'r') as f:
+            return True
+    except OSError:
+        return False
+
+def combine_hdf5_files(experiment_name, site, montage_type, montage_name, output_file, project_path):
+    
+    dataset_name = "EEG"
+    montage_type = montage_type
+    montage_name = montage_name
+    sites = [site]
+    input_files = None
 
     # Auto-discover files if not specified
     if not input_files:
@@ -46,8 +54,18 @@ def combine_hdf5_files(config, output_file, project_path):
         out_f.attrs["max_epochs"] = 0
         out_f.attrs["n_channels"] = 0
         
+        file_id_counter=0
         for in_file in tqdm(input_files, desc="🔗 Merging files"):
+            file_id_counter = file_id_counter + 1
             subject_id = os.path.splitext(os.path.basename(in_file))[0]
+
+            # Debug Print statement
+            #print(f"{file_id_counter} / {len(input_files)}: {in_file}")
+            
+            # Check that the file is valid before trying to add it to the h5 file
+            if not is_valid_hdf5(in_file):
+                print(f"⚠️ Skipping invalid HDF5 file: {in_file}")
+                continue
 
             # Skip duplicate subject IDs
             if subject_id in root_grp:
@@ -102,6 +120,7 @@ def combine_hdf5_files(config, output_file, project_path):
                     "subject_id": subject_id,
                     "source_file": source_file,
                     "site": site,
+                    "n_channels": n_channels,
                     "n_epochs": n_epochs,
                     "epoch_duration": subj_grp.attrs.get("epoch_duration", None),
                     "total_duration": subj_grp.attrs.get("total_duration", None),
@@ -132,15 +151,15 @@ def combine_hdf5_files(config, output_file, project_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True, help="Path to YAML configuration file")
+    parser.add_argument("--experiment_name", required=True, help="The name of the experiment")
+    parser.add_argument("--site", required=True, help="The site to include in the dataset")
+    parser.add_argument("--montage_type", required=True, help="The type of montage (e.g., 'monopolar', 'bipolar')")
+    parser.add_argument("--montage_name", required=True, help="The name of the montage")
     parser.add_argument("--output", required=True, help="Path to output HDF5 file")
     parser.add_argument("--source_filepath", required=True, help="Top-level path to project on HPC cluster")
     args = parser.parse_args()
 
-    with open(args.config, "r") as f:
-        config = yaml.safe_load(f)
-
-    combine_hdf5_files(config, args.output, args.source_filepath)
+    combine_hdf5_files(args.experiment_name, args.site, args.montage_type, args.montage_name, args.output, args.source_filepath)
 
 if __name__ == "__main__":
     main()

@@ -15,8 +15,11 @@ from ml.datasets.eeg_dataset import EEGRecordingDataset
 from ml.training.metrics import compute_per_level_metrics
 from ml.training.losses import HierarchicalLoss
 from ml.training.utils import EarlyStopping
-from ml.utils.splits import create_stratified_datasets, create_kfold_stratified_datasets
+from ml.utils.splits import load_split_indices
 from ml.models.hierarchical_classifier import EEGNetHierarchicalClassifier
+
+# don't buffer the standard output, i.e. write straight to the file when able
+sys.stdout.reconfigure(line_buffering=True)
 
 def parse_config():
     if "--config" not in sys.argv:
@@ -31,8 +34,7 @@ def parse_config():
     config = OmegaConf.merge(base_config, cli_config)
 
     if not config.get("run_id"):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        config.run_id = f"{timestamp}_{uuid.uuid4().hex[:6]}"
+        config.run_id = generate_run_name(config)
 
     # Dynamically define output directory
     base_data_dir = os.environ.get("DATA")
@@ -44,18 +46,26 @@ def parse_config():
         base_data_dir,
         "AGENDA-Headset-Algorithm/outputs",
         config.experiment_name,
-        config.run_id,
-        f"fold_{config.fold_index}"
-    )
-
-    # Path to the dataset to be used (dataset name is specified in the yaml config file)
-    config.data_path = os.path.join(
-        base_data_dir,
-        "AGENDA-Headset-Algorithm/data/final_processed",
-        config.dataset_name+".h5"
+        config.run_id
     )
 
     return config
+
+def generate_run_name(config):
+    parts = [f"fold_{config.dataset.fold_index}"]
+    if config.dataset.get("drop_electrodes"):
+        omitted = "-".join(sorted(config.dataset.drop_electrodes))
+        parts.append(f"omit_{omitted}")
+    return "_".join(parts)
+
+def generate_tags(config):
+    tags = {
+        "experiment_name": config.experiment_name,
+        "fold": str(config.dataset.fold_index),
+    }
+    if config.dataset.get("drop_electrodes"):
+        tags["drop_electrodes"] = ",".join(sorted(config.dataset.drop_electrodes))
+    return tags
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -114,17 +124,20 @@ def main():
     mlflow.set_tracking_uri("file://" + os.path.abspath("mlruns"))
     mlflow.set_experiment(config.experiment_name)
 
-    with mlflow.start_run(run_name=config.run_id):
+    run_name = generate_run_name(config)
+    with mlflow.start_run(run_name=run_name):
+        mlflow.set_tags(generate_tags(config))
         mlflow.log_params({
             "experiment_name": config.experiment_name,
-            "dataset_name": config.dataset_name, 
-            "fold_index": config.fold_index,
-            "batch_size": config.batch_size,
-            "epochs": config.epochs,
-            "lr": config.lr,
-            "dropout_rate": config.dropout_rate,
-            "kernel_length": config.kernel_length,
-            "pooling_type": config.pooling_type
+            "dataset_name": config.dataset.dataset_name, 
+            "dropped_electrodes": config.dataset.drop_electrodes,
+            "fold_index": config.dataset.fold_index,
+            "batch_size": config.train.batch_size,
+            "epochs": config.train.epochs,
+            "learning_rate": config.train.learning_rate,
+            "dropout_rate": config.model.dropout_rate,
+            "kernel_length": config.model.kernel_length,
+            "pooling_type": config.model.pooling_type
         })
 
         label_map = {
@@ -136,51 +149,79 @@ def main():
             'right': 5
         }
 
-        if config.k_folds > 1:
-            train_dataset, val_dataset, test_dataset = create_kfold_stratified_datasets(
-                h5_path=config.data_path,
-                dataset_name=config.dataset_name,
-                label_map=label_map,
-                k_folds=config.k_folds,
-                fold_index=config.fold_index,
-                seed=config.seed
-            )
-        else:
-            train_dataset, val_dataset, test_dataset = create_stratified_datasets(
-                h5_path=config.data_path,
-                dataset_name=config.dataset_name,
-                label_map=label_map,
-                ratios=(0.7, 0.15, 0.15),
-                seed=config.seed
-            )
+        # Get paths to the folder containing the dataset train/val and test dataset split files
+        split_base_path = config.dataset.subject_split_dir
 
-        train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
+        fold_split_path = os.path.join(split_base_path, f"fold_{config.dataset.fold_index}.json")
+        test_split_path = os.path.join(split_base_path, "test_split.json")
 
-        eegnet_args = {
-            "num_channels": 21,
-            "num_samples": 129,
-            "dropout_rate": config.dropout_rate,
-            "kernel_length": config.kernel_length
+        # Load the subject splits
+        fold_splits = load_split_indices(fold_split_path)
+        test_splits = load_split_indices(test_split_path)
+
+        # Merge them
+        subject_splits = {
+            "train": fold_splits["train"],
+            "val": fold_splits["val"],
+            "test": test_splits["test"]
         }
 
-        pooling_args = {"hidden_dim": 64} if config.pooling_type == "attention" else {}
+        # Trying to drop electrodes 
+        print(f"Trying to Drop Electrodes: {config.dataset.drop_electrodes}")
+
+        train_dataset = EEGRecordingDataset(
+            config.dataset.dataset_path, config.dataset.dataset_name, label_map,
+            omit_channels=config.dataset.drop_electrodes, 
+            subject_ids=subject_splits["train"]
+        )
+
+        val_dataset = EEGRecordingDataset(
+            config.dataset.dataset_path, config.dataset_name, label_map,
+            omit_channels=config.dataset.drop_electrodes, 
+            subject_ids=subject_splits["val"]
+        )
+
+        test_dataset = EEGRecordingDataset(
+            config.dataset.dataset_path, config.dataset_name, label_map,
+            omit_channels=config.dataset.drop_electrodes, 
+            subject_ids=subject_splits["test"]
+        )
+
+        train_loader = DataLoader(train_dataset, batch_size=config.train.batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=config.train.batch_size, shuffle=False)
+
+        # Get the number of channels in the dataset, i.e. want to determine dynamically for electrode ablation experiments
+        num_channels = train_dataset.get_num_channels() 
+
+        # Print the Number of EEG Channels
+        print(f"Using {num_channels} EEG Channels: ")
+        print(f"Omitted Channels: {train_dataset.get_omitted_channel_names()}")
+        print(f"Using Channels: {train_dataset.get_channel_names()}")
+
+        eegnet_args = {
+            "num_channels": num_channels,
+            "num_samples": 129,
+            "dropout_rate": config.model.dropout_rate,
+            "kernel_length": config.model.kernel_length
+        }
+
+        pooling_args = {"hidden_dim": 64} if config.model.pooling_type == "attention" else {}
         model = EEGNetHierarchicalClassifier(
             eegnet_args=eegnet_args,
-            pooling_type=config.pooling_type,
+            pooling_type=config.model.pooling_type,
             pooling_args=pooling_args
         ).to(config.device)
 
-        early_stopping = EarlyStopping(patience=config.patience, min_delta=config.min_delta)
+        early_stopping = EarlyStopping(patience=config.early_stopping.patience, min_delta=config.early_stopping.min_delta)
         criterion = HierarchicalLoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
+        optimizer = torch.optim.Adam(model.parameters(), lr=config.train.learning_rate)
 
         start_epoch = 0
         best_val_loss = float("inf")
-        final_epoch = config.epochs
+        final_epoch = config.train.epochs
 
-        if getattr(config, "resume", False):
-            ckpt_path = config.get("checkpoint_path") or os.path.join(config.output_dir, "latest_checkpoint.pt")
+        if getattr(config.train, "resume", False):
+            ckpt_path = config.train.get("checkpoint_path") or os.path.join(config.output_dir, "latest_checkpoint.pt")
             if os.path.exists(ckpt_path):
                 print(f"🔁 Resuming from checkpoint: {ckpt_path}")
                 start_epoch, best_val_loss = load_checkpoint(ckpt_path, model, optimizer)
@@ -188,7 +229,7 @@ def main():
             else:
                 print(f"⚠️ No checkpoint found at {ckpt_path}, starting from scratch.")
 
-        for epoch in range(start_epoch, config.epochs):
+        for epoch in range(start_epoch, config.train.epochs):
             model.train()
             total_loss = 0
 
@@ -208,7 +249,7 @@ def main():
                 total_loss += loss.item()
 
             avg_loss = total_loss / len(train_loader)
-            print(f"Epoch {epoch+1}/{config.epochs} - Train Loss: {avg_loss:.4f}")
+            print(f"Epoch {epoch+1}/{config.train.epochs} - Train Loss: {avg_loss:.4f}")
 
             model.eval()
             val_loss = 0
@@ -270,7 +311,7 @@ def main():
                 writer = csv.DictWriter(f, fieldnames=log_fields)
                 writer.writerow({
                     "run_id": config.run_id,
-                    "fold": config.fold_index,
+                    "fold": config.dataset.fold_index,
                     "epoch": epoch + 1,
                     "train_loss": avg_loss,
                     "val_loss": val_loss,

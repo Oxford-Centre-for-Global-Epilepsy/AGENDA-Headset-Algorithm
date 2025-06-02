@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 
 # EEG Recording Dataset (Expects that loaded data contains high-level label for each recording, i.e. not epoch-level labels)
 class EEGRecordingDataset(Dataset):
-    def __init__(self, h5_file_path, dataset_name, label_map=None, transform=None):
+    def __init__(self, h5_file_path, dataset_name, label_map=None, transform=None, omit_channels=None, subject_ids=None):
         """
         Args:
             h5_file_path (str): Path to combined HDF5 file.
@@ -20,20 +20,33 @@ class EEGRecordingDataset(Dataset):
                                 'right': 5
                               }
             transform (callable): Optional transform to apply to the EEG data.
+            omit_channels (list of str): Channel names to omit during loading
+            subject_ids (list of str): Subject ids to include in the dataset during loading (to faciliate train/validation/test dataset specific loading)
+
         """
         self.h5_file_path = h5_file_path
         self.dataset_name = dataset_name
         self.label_map = label_map or {}
         self.transform = transform
+        self.omit_channels = set(omit_channels or [])
 
         with h5py.File(self.h5_file_path, 'r') as f:
-            self.subject_ids = list(f[self.dataset_name].keys())
+            
+            # Load only the specified subject ids
+            all_subject_ids = list(f[self.dataset_name].keys())
+            self.subject_ids = subject_ids if subject_ids is not None else all_subject_ids
+            
+            # The max number of epochs in the dataset (for padding out some of the recordings)
             self.max_epochs = f.attrs["max_epochs"]
             
             # Get the channel names
             first_subject = self.subject_ids[0]
             channel_names_raw = f[self.dataset_name][first_subject].attrs["channel_names"]
-            self.channel_names = [name.decode("utf-8") if isinstance(name, bytes) else name for name in channel_names_raw]
+            self.original_channel_names = [name.decode("utf-8") if isinstance(name, bytes) else name for name in channel_names_raw]
+
+            # Compute keep indices (channels to retain)
+            self.keep_indices = [i for i, ch in enumerate(self.original_channel_names) if ch not in self.omit_channels]
+            self.channel_names = [self.original_channel_names[i] for i in self.keep_indices]
 
     def __len__(self):
         return len(self.subject_ids)
@@ -44,9 +57,13 @@ class EEGRecordingDataset(Dataset):
         with h5py.File(self.h5_file_path, 'r') as f:
             subj_group = f[self.dataset_name][subject_id]
             data = subj_group["data"][()]  # shape: [epochs, channels, time]
-            labels = subj_group.attrs["class_labels"]
+            
+            # Subselect channels if needed
+            if self.keep_indices:
+                data = data[:, self.keep_indices, :]
 
-            # Decode bytes if needed
+            # Get the class labels and decode bytes if needed
+            labels = subj_group.attrs["class_labels"]
             if isinstance(labels[0], bytes):
                 labels = [l.decode("utf-8") for l in labels]
 
@@ -75,16 +92,15 @@ class EEGRecordingDataset(Dataset):
                 label_mask.append(0)
 
             # Pad or truncate EEG epochs
-            n_epochs, n_channels, n_time = data.shape
+            n_epochs, _, n_time = data.shape
             epoch_mask = np.ones(self.max_epochs, dtype=np.bool_)
             if n_epochs < self.max_epochs:
-                pad = np.zeros((self.max_epochs - n_epochs, n_channels, n_time), dtype=data.dtype)
+                pad = np.zeros((self.max_epochs - n_epochs, len(self.keep_indices), n_time), dtype=data.dtype)
                 data = np.concatenate([data, pad], axis=0)
                 epoch_mask[n_epochs:] = 0
             elif n_epochs > self.max_epochs:
                 data = data[:self.max_epochs]
 
-            # Apply optional transform
             if self.transform:
                 data = self.transform(data)
 
@@ -94,11 +110,19 @@ class EEGRecordingDataset(Dataset):
             "label_mask": torch.tensor(label_mask, dtype=torch.bool),      # [3]
             "attention_mask": torch.tensor(epoch_mask, dtype=torch.bool),  # [E]
             "subject_id": subject_id
-
         }
     
     def get_channel_names(self):
+        """Returns the list of channel names"""
         return self.channel_names
+
+    def get_omitted_channel_names(self):
+        """Returns the list of omitted channel names"""
+        return self.omit_channels
+
+    def get_num_channels(self):
+        """Returns the number of EEG channels after omission."""
+        return len(self.keep_indices)
 
     def get_subject_ids(self):
         """Returns list of subject IDs in the dataset."""
@@ -122,25 +146,3 @@ class EEGRecordingDataset(Dataset):
         """Filters dataset to only include specified subject IDs."""
         self.subject_ids = [sid for sid in self.subject_ids if sid in include_ids]
 
-# Old Code to update: EEG Dataset class for when there is labels for epochs in the recording, i.e. each epoch has its own label that can be used for training
-class EEGDataset(Dataset):
-    def __init__(self, hdf5_file, transform=None):
-        self.hdf5_file = hdf5_file
-        self.transform = transform
-
-        # Load EEG data from HDF5
-        with h5py.File(hdf5_file, "r") as f:
-            self.data = np.array(f["EEG/data"])  # (n_epochs, n_channels, n_times)
-            self.labels = np.array(f["EEG/labels"])  # (n_epochs,)
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        eeg_sample = self.data[idx]
-        label = self.labels[idx]
-
-        if self.transform:
-            eeg_sample = self.transform(eeg_sample)
-
-        return torch.tensor(eeg_sample, dtype=torch.float32), torch.tensor(label, dtype=torch.long)
