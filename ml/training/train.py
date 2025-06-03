@@ -2,6 +2,7 @@ from omegaconf import OmegaConf
 import sys
 import os
 import csv
+import ast
 import torch
 import uuid
 import random
@@ -49,13 +50,34 @@ def parse_config():
         config.run_id
     )
 
+    # Handle comma-separated string for the drop_electrodes
+    omit = config.dataset.get("drop_electrodes")
+    print(f"Parsed Electrodes to Omit: {omit}")
+
+    if isinstance(omit, str):
+        try:
+            config.dataset.drop_electrodes = ast.literal_eval(omit)
+        except (ValueError, SyntaxError):
+            config.dataset.drop_electrodes = [ch.strip() for ch in omit.split(',')]
+
+    print(f"Updated Parsed Electrodes to Omit: {config.dataset.drop_electrodes}")
+
     return config
 
 def generate_run_name(config):
     parts = [f"fold_{config.dataset.fold_index}"]
-    if config.dataset.get("drop_electrodes"):
-        omitted = "-".join(sorted(config.dataset.drop_electrodes))
+
+    drop_electrodes = config.dataset.get("drop_electrodes")
+    if isinstance(drop_electrodes, str):
+        try:
+            drop_electrodes = ast.literal_eval(drop_electrodes)
+        except (ValueError, SyntaxError):
+            drop_electrodes = [ch.strip() for ch in drop_electrodes.split(',')]
+
+    if drop_electrodes:
+        omitted = "_".join(sorted(drop_electrodes))
         parts.append(f"omit_{omitted}")
+
     return "_".join(parts)
 
 def generate_tags(config):
@@ -111,7 +133,7 @@ def main():
 
     log_path = os.path.join(config.output_dir, "metrics_log.csv")
     log_fields = [
-        "run_id", "fold", "epoch", "train_loss", "val_loss",
+        "run_id", "model_size", "fold", "epoch", "train_loss", "val_loss",
         "level1_accuracy", "level1_f1", "level1_precision", "level1_recall", "level1_roc_auc",
         "level2_accuracy", "level2_f1", "level2_precision", "level2_recall", "level2_roc_auc",
         "level3_accuracy", "level3_f1", "level3_precision", "level3_recall", "level3_roc_auc"
@@ -300,10 +322,19 @@ def main():
                 "val_loss": val_loss,
                 "level1_accuracy": metrics["level1"]["accuracy"],
                 "level1_f1": metrics["level1"]["f1"],
+                "level1_precision": metrics["level1"]["precision"],
+                "level1_recall": metrics["level1"]["recall"],
+                "level1_roc_auc": metrics["level1"]["roc_auc"],
                 "level2_accuracy": metrics["level2"]["accuracy"],
                 "level2_f1": metrics["level2"]["f1"],
+                "level2_precision": metrics["level2"]["precision"],
+                "level2_recall": metrics["level2"]["recall"],
+                "level2_roc_auc": metrics["level2"]["roc_auc"],
                 "level3_accuracy": metrics["level3"]["accuracy"],
-                "level3_f1": metrics["level3"]["f1"], 
+                "level3_f1": metrics["level3"]["f1"],
+                "level3_precision": metrics["level3"]["precision"],
+                "level3_recall": metrics["level3"]["recall"],
+                "level3_roc_auc": metrics["level3"]["roc_auc"], 
                 "model_size": model_size
             }, step=epoch + 1)
 
@@ -311,17 +342,26 @@ def main():
                 writer = csv.DictWriter(f, fieldnames=log_fields)
                 writer.writerow({
                     "run_id": config.run_id,
+                    "model_size": model_size,
                     "fold": config.dataset.fold_index,
                     "epoch": epoch + 1,
                     "train_loss": avg_loss,
                     "val_loss": val_loss,
                     "level1_accuracy": metrics["level1"]["accuracy"],
                     "level1_f1": metrics["level1"]["f1"],
+                    "level1_precision": metrics["level1"]["precision"],
+                    "level1_recall": metrics["level1"]["recall"],
+                    "level1_roc_auc": metrics["level1"]["roc_auc"],
                     "level2_accuracy": metrics["level2"]["accuracy"],
                     "level2_f1": metrics["level2"]["f1"],
+                    "level2_precision": metrics["level2"]["precision"],
+                    "level2_recall": metrics["level2"]["recall"],
+                    "level2_roc_auc": metrics["level2"]["roc_auc"],
                     "level3_accuracy": metrics["level3"]["accuracy"],
-                    "level3_f1": metrics["level3"]["f1"], 
-                    "model_size": model_size
+                    "level3_f1": metrics["level3"]["f1"],
+                    "level3_precision": metrics["level3"]["precision"],
+                    "level3_recall": metrics["level3"]["recall"],
+                    "level3_roc_auc": metrics["level3"]["roc_auc"]
                 })
 
             early_stopping(val_loss)

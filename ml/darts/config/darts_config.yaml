@@ -1,0 +1,20 @@
+# DARTS Architecture Search Parameters 
+search:
+  dataset: EEG
+  dataset_path: data
+  fold_index: 0
+  epochs: 50
+  batch_size: 4
+  learning_rate: 0.01
+  arch_learning_rate: 0.01
+  num_layers: 4
+  num_channels: 21
+  operation_choices: [temporal_conv, depthwise_conv, separable_conv, eegnet_block, avg_pool_3x3, max_pool_3x3, skip_connect]
+  seed: 42
+  log_dir: outputs/darts/search
+
+data:
+  #input_channels: 21
+  #input_height: 32
+  #input_width: 32
+  #num_classes: 10

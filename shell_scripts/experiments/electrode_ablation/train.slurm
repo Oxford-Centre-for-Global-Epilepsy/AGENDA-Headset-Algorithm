@@ -24,4 +24,4 @@ python -m ml.training.train \
   dataset.fold_index=$FOLD \
   model.pooling_type=$POOLING_TYPE \
   seed=$SEED \
-  dataset.drop_electrodes="$OMIT_LIST"
+  dataset.drop_electrodes="$FORMATTED_OMIT_LIST"
