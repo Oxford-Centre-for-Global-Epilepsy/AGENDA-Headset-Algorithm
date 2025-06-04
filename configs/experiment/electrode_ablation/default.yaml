@@ -1,0 +1,2 @@
+electrode_ablation:
+  drop_electrodes: []  # e.g., ["Fp1", "Fp2"] if doing ablation

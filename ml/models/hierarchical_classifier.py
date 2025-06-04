@@ -1,15 +1,41 @@
 import torch
 import torch.nn as nn
-from ml.models.eegnet import EEGNet
-from ml.models.attention_pooling import MeanPooling, AttentionPooling, TransformerPooling
+from ml.models.feature_extractor.eegnet import EEGNet
+from ml.models.pooling import mean, attention, transformer
 
-class EEGNetHierarchicalClassifier(nn.Module):
+import torch
+import torch.nn as nn
+
+class HierarchicalClassifier(nn.Module):
+    def __init__(self, feature_extractor, pooling_layer, classifier):
+        super(HierarchicalClassifier, self).__init__()
+        self.feature_extractor = feature_extractor
+        self.pooling_layer = pooling_layer
+        self.classifier = classifier
+
+    def forward(self, x, attention_mask=None, return_attn_weights=False, return_features=False):
+        # Pass through the feature extractor
+        features = self.feature_extractor(x)
+        
+        # Pass through the pooling layer
+        pooled_features = self.pooling_layer(features)
+        
+        # Pass through the classifier
+        out = self.classifier(pooled_features)
+        
+        if return_attn_weights:
+            out["attention_weights"] = attention_mask  # Just an example
+        if return_features:
+            out["features"] = pooled_features
+        
+        return out
+        
+class HierarchicalClassifier(nn.Module):
     def __init__(self,
-                 eegnet_args,
-                 pooling_type="attention",
-                 pooling_args=None,
-                 hidden_dim=128,
-                 num_classes=(2, 2, 2)):
+                 feature_extractor,
+                 pooling_layer,
+                 classifier
+                 ):
         """
         Args:
             eegnet_args (dict): kwargs to initialize EEGNet

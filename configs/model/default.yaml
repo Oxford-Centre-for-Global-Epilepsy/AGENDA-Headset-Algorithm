@@ -1,0 +1,7 @@
+defaults:
+  - feature_extractor: eegnet
+  - pooling: attention
+  - classifier: multihead
+
+model:
+  name: EEGNetHierarchicalClassifier

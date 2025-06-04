@@ -1,0 +1,9 @@
+type: "eegnet"        # Use eegnet as a feature extractor for the model
+params:
+  num_channels: 21
+  num_samples: 129
+  dropout_rate: 0.5
+  F1: 8
+  D: 2
+  F2: 16
+  kernel_length: 64

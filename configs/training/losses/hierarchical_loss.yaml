@@ -1,0 +1,7 @@
+# config/training/losses/hierarchical_loss.yaml
+type: "hierarchical_loss"
+params:
+  weights: [1.0, 1.0, 1.0]  # You can adjust the weights for each level of the hierarchy
+  level1_weights: null      # If you want to specify class weights for level 1, you can provide a tensor here
+  level2_weights: null      # Similarly for level 2
+  level3_weights: null      # Similarly for level 3

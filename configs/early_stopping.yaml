@@ -1,0 +1,22 @@
+defaults:
+  - dataset: default
+  - model: default
+  - training: train
+  - early_stopping: default
+
+experiment_name: "my_experiment"
+output_dir: "results/"
+run_id: null  # Will be auto-generated if not set
+seed: 42
+
+# Training configuration
+train:
+  batch_size: 32
+  epochs: 50
+  learning_rate: 0.001
+  optimizer: "adam"  # Default optimizer
+
+# Early stopping configuration
+early_stopping:
+  patience: 5
+  min_delta: 0.001

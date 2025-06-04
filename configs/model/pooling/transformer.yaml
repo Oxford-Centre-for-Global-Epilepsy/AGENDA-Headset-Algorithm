@@ -1,0 +1,6 @@
+type: "transformer"        # Use transformer (self-attention) mechanism for pooling layer in the model
+params:
+  num_heads: 4
+  num_layers: 2
+  dropout_rate: 0.1
+  use_cls_token: True

@@ -1,0 +1,5 @@
+type: "attention"        # Use attention mechanism for pooling layer in the model
+params:
+  hidden_dim: 64
+  dropout_rate: 0.5
+  kernel_length: 64

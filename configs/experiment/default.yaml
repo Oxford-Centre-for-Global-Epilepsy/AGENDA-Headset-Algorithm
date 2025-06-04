@@ -1,0 +1,6 @@
+defaults:
+  - electrode_ablation: default
+
+experiment:
+  experiment_name: electrode_ablation
+  output_dir: results/electrode_ablation  # Optional override

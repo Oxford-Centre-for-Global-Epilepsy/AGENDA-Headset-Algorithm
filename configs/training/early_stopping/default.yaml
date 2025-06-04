@@ -1,0 +1,4 @@
+# configs/training/early_stopping/default.yaml
+early_stopping:
+  patience: 10
+  min_delta: 0.001
