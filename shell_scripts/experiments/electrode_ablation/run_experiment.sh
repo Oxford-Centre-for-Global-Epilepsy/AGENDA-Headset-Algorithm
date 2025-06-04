@@ -23,7 +23,7 @@ if [ "$MODE" == "cv" ]; then
 
 elif [ "$MODE" == "final" ]; then
   echo "🏁 Running Final Full Training with Multiple Seeds..."
-  bash shell_scripts/experiments/electrode_ablation/train_final_model.sh "$EXPERIMENT_NAME" "$DATASET_NAME" "$POOLING_TYPE" "$OMIT_LIST" config/train_final_model.yaml
+  bash shell_scripts/experiments/electrode_ablation/train_final_model.sh "$EXPERIMENT_NAME" "$DATASET_NAME" "$POOLING_TYPE" "$OMIT_LIST" configs/experiments/electrode_ablation/train_final_model.yaml
 
 else
   echo "❌ Unknown mode: $MODE. Use 'cv' or 'final'."

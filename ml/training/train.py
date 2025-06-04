@@ -7,6 +7,7 @@ import torch
 import uuid
 import random
 import numpy as np
+from sklearn.utils import class_weight
 from datetime import datetime
 from torch.utils.data import DataLoader
 import mlflow
@@ -197,6 +198,9 @@ def main():
             subject_ids=subject_splits["train"]
         )
 
+        # Calculate the weights for each class in the training dataset
+        level1_class_weights, level2_class_weights, level3_class_weights = train_dataset.get_class_weights()
+
         val_dataset = EEGRecordingDataset(
             config.dataset.dataset_path, config.dataset_name, label_map,
             omit_channels=config.dataset.drop_electrodes, 
@@ -234,8 +238,17 @@ def main():
             pooling_args=pooling_args
         ).to(config.device)
 
+        # Specify the early stopping criteria for model training
         early_stopping = EarlyStopping(patience=config.early_stopping.patience, min_delta=config.early_stopping.min_delta)
-        criterion = HierarchicalLoss()
+        
+        # Specify the loss function to use for model training
+        criterion = HierarchicalLoss(weights=(1.0, 1.0, 1.0),
+            level1_weights=level1_class_weights,
+            level2_weights=level2_class_weights,
+            level3_weights=level3_class_weights
+        )
+
+        # Specify the optimizer to use
         optimizer = torch.optim.Adam(model.parameters(), lr=config.train.learning_rate)
 
         start_epoch = 0

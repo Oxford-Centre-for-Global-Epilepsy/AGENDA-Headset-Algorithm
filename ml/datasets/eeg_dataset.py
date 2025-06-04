@@ -146,3 +146,62 @@ class EEGRecordingDataset(Dataset):
         """Filters dataset to only include specified subject IDs."""
         self.subject_ids = [sid for sid in self.subject_ids if sid in include_ids]
 
+    def get_target_labels(self):
+        """
+        Returns a list of all the target labels across the entire dataset.
+        Returns a list of tuples: [(level1, level2, level3), ...]
+        """
+        target_labels = []
+        with h5py.File(self.h5_file_path, "r") as f:
+            group = f[self.dataset_name]
+            for sid in group.keys():
+                labels = group[sid].attrs["class_labels"]
+                if isinstance(labels[0], bytes):
+                    labels = [l.decode("utf-8") for l in labels]
+                # Collect all 3 levels of labels for each subject
+                label_tuple = (
+                    self.label_map.get(labels[0], -1),
+                    self.label_map.get(labels[1], -1) if len(labels) > 1 else -1,
+                    self.label_map.get(labels[2], -1) if len(labels) > 2 else -1
+                )
+                target_labels.append(label_tuple)
+        return target_labels
+
+    def get_class_weights(self):
+        """
+        Calculates balanced class weights for each classification level (level 1, level 2, and level 3).
+        Returns the class weights as PyTorch tensors.
+        """
+        # Get all labels from the dataset
+        all_labels = self.get_target_labels()
+
+        # Separate labels by level
+        level1_labels = [label[0] for label in all_labels]  # Labels from level 1
+        level2_labels = [label[1] for label in all_labels]  # Labels from level 2
+        level3_labels = [label[2] for label in all_labels]  # Labels from level 3
+
+        # Remove `-1` values (masked labels) for each level
+        level1_labels = [label for label in level1_labels if label != -1]
+        level2_labels = [label for label in level2_labels if label != -1]
+        level3_labels = [label for label in level3_labels if label != -1]
+
+        # Compute class weights for each level independently
+        level1_class_weights = class_weight.compute_class_weight('balanced', 
+                                                                  classes=np.unique(level1_labels), 
+                                                                  y=level1_labels)
+
+        level2_class_weights = class_weight.compute_class_weight('balanced', 
+                                                                  classes=np.unique(level2_labels), 
+                                                                  y=level2_labels)
+
+        level3_class_weights = class_weight.compute_class_weight('balanced', 
+                                                                  classes=np.unique(level3_labels), 
+                                                                  y=level3_labels)
+
+        # Convert to tensor for PyTorch compatibility
+        level1_class_weights_tensor = torch.tensor(level1_class_weights, dtype=torch.float)
+        level2_class_weights_tensor = torch.tensor(level2_class_weights, dtype=torch.float)
+        level3_class_weights_tensor = torch.tensor(level3_class_weights, dtype=torch.float)
+
+        # Return class weights for each level
+        return level1_class_weights_tensor, level2_class_weights_tensor, level3_class_weights_tensor

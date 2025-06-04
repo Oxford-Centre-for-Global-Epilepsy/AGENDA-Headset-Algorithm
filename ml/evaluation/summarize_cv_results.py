@@ -5,14 +5,23 @@ import numpy as np
 import argparse
 
 def summarize_folds(parent_dir, omit_list=None):
-    pattern = "fold_*"
-    if omit_list:
-        tag = "omit_" + "_".join(omit_list.split(","))
-        pattern += f"_{tag}"
+    all_dirs = glob.glob(os.path.join(parent_dir, "fold_*"))
+    fold_dirs = []
 
-    fold_dirs = sorted(glob.glob(os.path.join(parent_dir, pattern)))
+    for d in all_dirs:
+        basename = os.path.basename(d)
+        if omit_list:
+            tag = "omit_" + "_".join(omit_list.split(","))
+            if basename.endswith(tag):
+                fold_dirs.append(d)
+        else:
+            if "omit_" not in basename:
+                fold_dirs.append(d)
+
+    fold_dirs = sorted(fold_dirs)
     all_results = []
 
+    print(fold_dirs)
     for fold_dir in fold_dirs:
         csv_path = os.path.join(fold_dir, "metrics_log.csv")
         if not os.path.exists(csv_path):
@@ -25,7 +34,7 @@ def summarize_folds(parent_dir, omit_list=None):
         all_results.append(best_row)
 
     if not all_results:
-        raise ValueError(f"❌ No valid metrics found matching pattern: {pattern}")
+        raise ValueError(f"❌ No valid metrics found in the selected folds under {parent_dir}. Please check if 'metrics_log.csv' exists in the expected directories.")
 
     df_all = pd.DataFrame(all_results)
     metrics_only = df_all.drop(columns=["run_id", "fold", "epoch"])
