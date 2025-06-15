@@ -1,3 +1,4 @@
+_target_: "ml.models.pooling.transformer.TransformerPooling"
 type: "transformer"        # Use transformer (self-attention) mechanism for pooling layer in the model
 params:
   num_heads: 4

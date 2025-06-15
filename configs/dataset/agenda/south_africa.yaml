@@ -1,8 +1,0 @@
-# config/dataset/agenda/south_africa.yaml
-type: "south_africa"
-params:
-  dataset_name: EEG
-  dataset_path: /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/experiment_datasets/electrode_ablation/south_africa/monopolar/standard_10_20/processed_dataset.h5
-  subject_split_dir: /data/ndcn-cortico-basal-ganglia-model/ndcn1133/AGENDA-Headset-Algorithm/data/experiment_datasets/electrode_ablation/south_africa/monopolar/standard_10_20/dataset_splits
-  fold_index: 0
-  k_folds: 5

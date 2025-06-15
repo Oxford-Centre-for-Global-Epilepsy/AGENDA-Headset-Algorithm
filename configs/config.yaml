@@ -1,4 +1,6 @@
 defaults:
+  - _self_
+  - experiment: default
   - dataset: default
   - model: default
   - training: default

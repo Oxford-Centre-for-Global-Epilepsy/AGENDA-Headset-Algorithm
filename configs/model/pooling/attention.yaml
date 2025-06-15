@@ -1,3 +1,4 @@
+_target_: "ml.models.pooling.attention.AttentionPooling"
 type: "attention"        # Use attention mechanism for pooling layer in the model
 params:
   hidden_dim: 64

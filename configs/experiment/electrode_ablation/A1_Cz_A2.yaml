@@ -1,0 +1,1 @@
+omit_channels: ["A1", "Cz", "A2"] # Drop electrodes A1, Cz and A2

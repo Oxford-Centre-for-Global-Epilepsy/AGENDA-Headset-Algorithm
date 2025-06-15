@@ -1,0 +1,1 @@
+omit_channels: ["T3", "T4"] # Drop electrodes T3 and T4

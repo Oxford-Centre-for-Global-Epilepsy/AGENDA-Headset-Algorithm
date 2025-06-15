@@ -1,3 +1,4 @@
+_target_: "ml.models.feature_extractor.eegnet.EEGNet"
 type: "eegnet"        # Use eegnet as a feature extractor for the model
 params:
   num_channels: 21

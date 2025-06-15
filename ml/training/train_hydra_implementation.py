@@ -21,50 +21,11 @@ from ml.training.utils import EarlyStopping
 from ml.utils.splits import load_split_indices
 from ml.models.hierarchical_classifier import HierarchicalClassifier
 
+from configs.schema import MainConfig
+from hydra.utils import instantiate
+
 # don't buffer the standard output, i.e. write straight to the file when able
 sys.stdout.reconfigure(line_buffering=True)
-
-def parse_config():
-    if "--config" not in sys.argv:
-        raise ValueError("Please provide a config file using --config path/to/file.yaml")
-
-    config_index = sys.argv.index("--config")
-    config_path = sys.argv[config_index + 1]
-    overrides = sys.argv[config_index + 2:]
-
-    base_config = OmegaConf.load(config_path)
-    cli_config = OmegaConf.from_dotlist(overrides)
-    config = OmegaConf.merge(base_config, cli_config)
-
-    if not config.get("run_id"):
-        config.run_id = generate_run_name(config)
-
-    # Dynamically define output directory
-    base_data_dir = os.environ.get("DATA")
-    if base_data_dir is None:
-        raise EnvironmentError("❌ The DATA environment variable is not set on this system.")
-
-    # Get the path to the dataset to be used
-    config.output_dir = os.path.join(
-        base_data_dir,
-        "AGENDA-Headset-Algorithm/outputs",
-        config.experiment_name,
-        config.run_id
-    )
-
-    # Handle comma-separated string for the drop_electrodes
-    omit = config.dataset.get("drop_electrodes")
-    print(f"Parsed Electrodes to Omit: {omit}")
-
-    if isinstance(omit, str):
-        try:
-            config.dataset.drop_electrodes = ast.literal_eval(omit)
-        except (ValueError, SyntaxError):
-            config.dataset.drop_electrodes = [ch.strip() for ch in omit.split(',')]
-
-    print(f"Updated Parsed Electrodes to Omit: {config.dataset.drop_electrodes}")
-
-    return config
 
 def generate_run_name(config):
     parts = [f"fold_{config.dataset.fold_index}"]
@@ -119,19 +80,23 @@ def get_model_size(model):
     size_all_bytes = param_size + buffer_size
     return size_all_bytes / 1e6  # Convert to MB
 
-@hydra.main(config_path="../../configs", config_name="config")
-def main(cfg: DictConfig):
+@hydra.main(config_path="../../configs", config_name="config", version_base="1.1")
+def main(cfg: MainConfig):
     
-    print(f"Running experiment with configuration: \n{cfg.pretty()}")
-    
-    # Access dataset configuration
-    dataset_cfg = cfg.dataset
-    print(f"Dataset: {dataset_cfg.dataset_name} located at {dataset_cfg.dataset_path}")
-    
-    # Access model configuration
-    model_cfg = cfg.model
-    print(f"Model: {model_cfg.name} with layers {model_cfg.layers}")
+    # Hydra will resolve ${env:...} automatically when accessed
+    print(f"Running experiment with configuration:\n{OmegaConf.to_yaml(cfg)}")
 
+    dataset_cfg = cfg.dataset
+    print(f"Project Name: {dataset_cfg.project_name}")
+    print(f"Site Name: {dataset_cfg.site_name}")
+    print(f"Dataset Name: {dataset_cfg.dataset_name}")
+    print(f"Dataset Path: {dataset_cfg.dataset_path}")  # This resolves ${env:DATA} automatically
+
+    model_cfg = cfg.model
+    print("Model configuration:")
+    print(f"  Feature Extractor: {model_cfg.feature_extractor._target_}")
+    print(f"  Pooling Layer:     {model_cfg.pooling._target_}")
+    print(f"  Classifier:        {model_cfg.classifier._target_}")
 
 if __name__ == "__main__":
     main()

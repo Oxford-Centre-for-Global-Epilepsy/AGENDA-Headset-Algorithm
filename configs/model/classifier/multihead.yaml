@@ -1,3 +1,4 @@
+_target_: "ml.models.classifier.multihead.MultiHeadClassifier"
 type: multihead   # Multi-head classifier with 3 levels
 params:
   num_classes: [2, 2, 2]  # Number of classes for each level
