@@ -15,6 +15,16 @@ class EEGRecordingTFGenerator():
             omit_channels (list of str): Channel names to omit during loading.
             subject_ids (list of str): Subject ids to include in the dataset.
         """
+        if label_map is None:
+            label_map ={
+                'neurotypical': 0,
+                'epileptic': 1,
+                'focal': 2,
+                'generalized': 3,
+                'left': 4,
+                'right': 5
+           }
+
         self.dataset = EEGRecordingDataset(
             h5_file_path=h5_file_path,
             dataset_name=dataset_name,
