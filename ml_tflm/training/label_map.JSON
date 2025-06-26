@@ -1,0 +1,15 @@
+{
+    "label_map": {
+        "neurotypical": 0,
+        "epileptic": 1,
+        "focal": 2,
+        "generalized": 3,
+        "left": 4,
+        "right": 5
+    },
+    "label_prior": {
+        "epileptic": 0.5,
+        "focal": 0.5,
+        "left": 0.5
+    }
+}
