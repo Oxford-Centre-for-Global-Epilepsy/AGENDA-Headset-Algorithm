@@ -8,7 +8,10 @@ import os
 
 import tensorflow as tf
 
-def load_label_config_with_interpretation(json_path):
+from collections import Counter
+
+
+def load_label_config(json_path):
     """
     Load label_map and label_prior from a JSON file and generate useful interpretation mappings.
 
@@ -36,51 +39,10 @@ def load_label_config_with_interpretation(json_path):
 
     inverse_label_map = {v: k for k, v in label_map.items()}
 
-    # Build probabilistic_vector_map
-    probabilistic_vector_map = {}
-    class_map = {
-        "neurotypical": 0,
-        "generalized": 1,
-        "left": 2,
-        "right": 3
-    }
-
-    for label, idx in label_map.items():
-        vec = np.zeros(len(class_map), dtype=np.float32)
-
-        if label == "neurotypical":
-            vec[class_map["neurotypical"]] = 1.0
-        elif label == "generalized":
-            # epileptic + not focal → generalized
-            vec[class_map["generalized"]] = label_prior["epileptic"] * (1 - label_prior["focal"])
-        elif label == "left":
-            # epileptic + focal + left
-            vec[class_map["left"]] = label_prior["epileptic"] * label_prior["focal"] * label_prior["left"]
-        elif label == "right":
-            # epileptic + focal + right
-            vec[class_map["right"]] = label_prior["epileptic"] * label_prior["focal"] * (1 - label_prior["left"])
-        elif label == "epileptic":
-            # Unknown type → use all subtypes based on prior
-            vec[class_map["generalized"]] = label_prior["epileptic"] * (1 - label_prior["focal"])
-            vec[class_map["left"]] = label_prior["epileptic"] * label_prior["focal"] * label_prior["left"]
-            vec[class_map["right"]] = label_prior["epileptic"] * label_prior["focal"] * (1 - label_prior["left"])
-        elif label == "focal":
-            # Unknown laterality → split focal between left/right
-            vec[class_map["left"]] = label_prior["epileptic"] * label_prior["focal"] * label_prior["left"]
-            vec[class_map["right"]] = label_prior["epileptic"] * label_prior["focal"] * (1 - label_prior["left"])
-        else:
-            raise ValueError(f"Unexpected label: {label}")
-
-        # Normalize for safety
-        total = vec.sum()
-        if total > 0:
-            vec /= total
-        probabilistic_vector_map[label] = vec
-
     return {
         "label_map": label_map,
         "inverse_label_map": inverse_label_map,
-        "probabilistic_vector_map": probabilistic_vector_map
+        "label_prior": label_prior
     }
 
 def load_eeg_datasets_split(h5_file_path, dataset_name, label_map=None,
@@ -144,4 +106,54 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_map=None,
         make_tf_dataset(test_ids)
     )
 
-# TODO: Add interpretor function for soft class vectors
+def get_model_size_tf(model):
+    size_bytes = sum([tf.keras.backend.count_params(w) * w.dtype.size for w in model.weights])
+    return size_bytes / 1e6  # MB
+
+def get_checkpoint_manager(model, optimizer, ckpt_dir, max_to_keep=3):
+    checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+    manager = tf.train.CheckpointManager(
+        checkpoint,
+        directory=ckpt_dir,
+        max_to_keep=max_to_keep
+    )
+    return checkpoint, manager
+
+def maybe_restore_checkpoint(checkpoint, manager):
+    if manager.latest_checkpoint:
+        checkpoint.restore(manager.latest_checkpoint).expect_partial()
+        return True
+    else:
+        return False
+
+def compute_internal_label_histogram(dataset, inverse_label_map):
+    """
+    Compute histogram of internal label indices from dataset using hierarchical label rules.
+
+    Args:
+        dataset (tf.data.Dataset): Yields dicts with key "label" of shape [B, 3]
+        inverse_label_map (dict): {int_label: str_label}
+        label_map_internal (dict): {str_label: flat_index}
+
+    Returns:
+        dict: {str_label: count}
+    """
+    counter = Counter()
+
+    for batch in dataset:
+        label_tensor = batch["label"]  # [B, 3]
+        labels_np = label_tensor.numpy() if tf.is_tensor(label_tensor) else label_tensor
+
+        for label_vec in labels_np:
+            # Use last non -1 entry
+            for i in reversed(range(3)):
+                if label_vec[i] != -1:
+                    label_id = int(label_vec[i])
+                    break
+            else:
+                raise ValueError(f"Invalid label: all levels are -1 — got {label_vec}")
+
+            label_str = inverse_label_map[label_id]
+            counter[label_str] += 1
+
+    return dict(counter)

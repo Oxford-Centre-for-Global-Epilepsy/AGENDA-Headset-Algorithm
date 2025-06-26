@@ -43,7 +43,7 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             }
  
         # Normalize class weights based on the histogram
-        self.class_weights = self.normalize_class_weights(class_histogram)
+        self.class_weights_tensor = self.normalize_class_weights(class_histogram)
 
         # Convert class weights to tensor
         self.tensor_conversion()
@@ -145,15 +145,25 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             dict: {class_label (str): normalized weight (float)}.
                 Zero-frequency classes are excluded.
         """
-        # Compute inverse frequencies for non-zero entries
-        inv_freq = {label: 1.0 / count for label, count in class_histogram.items() if count > 0}
+        frequency_tensor = tf.zeros(4, dtype=tf.float32)
+        for key, value in class_histogram.items():
+            frequency_tensor += value * self.soft_class_vector[key]
 
-        # Normalize to make sum = 1
-        total = sum(inv_freq.values())
+        # Compute inverse frequency weights with zero-handling
+        inverse_weights = tf.where(
+            frequency_tensor > 0,
+            1.0 / frequency_tensor,
+            tf.zeros_like(frequency_tensor)
+        )
+
+        # Normalize the weights so they sum to 1
+        total = tf.reduce_sum(inverse_weights)
         if total == 0:
-            raise ValueError("All class frequencies are zero.")
+            raise ValueError("All class frequencies are zero — cannot normalize.")
 
-        return {label: weight / total for label, weight in inv_freq.items()}
+        normalized_weights = inverse_weights / total
+
+        return normalized_weights  # tf.Tensor of shape [4]
 
     def normalize_distance_matrix(self, distance_matrix, temperature):
         Z = np.max(distance_matrix) / temperature
@@ -216,16 +226,10 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         # Construct an internal label map for tensor indexing
         self.label_map_internal = {key: i for i, key in enumerate(self.label_map.keys())}
 
-        # Convert dict to tensor: shape [C, C]
+        # Convert dict to tensor: shape [C(classification), C(label output)]
         self.soft_target_tensor = tf.stack(
             [self.soft_target_vectors[label] for label in sorted(self.label_map_internal, key=self.label_map_internal.get)],
             axis=0
-        )
-
-        # Convert to tensor using internal label ordering
-        self.class_weights_tensor = tf.constant(
-            [self.class_weights[label] for label in sorted(self.label_map_internal, key=self.label_map_internal.get)],
-            dtype=tf.float32
         )
 
     def get_soft_class_vector(self, label=None):
@@ -240,7 +244,6 @@ class StructureAwareLoss(tf.keras.losses.Loss):
                 return self.soft_class_vector[label]
             else:
                 raise ValueError(f"Label '{label}' not found in soft class vector.")
-
 
     def get_target_vector(self, label=None):
         """
