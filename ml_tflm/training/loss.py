@@ -11,6 +11,10 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         self.inverse_label_map = label_config['inverse_label_map']
         self.label_prior = label_config['label_prior']
 
+        # Construct an internal label map for tensor indexing
+        self.label_map_internal = {key: i for i, key in enumerate(self.label_map.keys())}
+
+
         # Construct the soft class vector based on the label prior
         self.soft_class_vector = self.construct_soft_class(self.label_prior)
 
@@ -43,7 +47,7 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             }
  
         # Normalize class weights based on the histogram
-        self.class_weights_tensor = self.normalize_class_weights(class_histogram)
+        self.class_weights = self.normalize_class_weights(class_histogram)
 
         # Convert class weights to tensor
         self.tensor_conversion()
@@ -60,11 +64,12 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             tf.Tensor: scalar loss value
         """
 
-        # Step 1: Convert hierarchical label → internal index
-        internal_indices = self.batch_label_interpretor(y_true)  # shape [B]
+        # Step 1: Squeeze y_true to remove last dimension if present
+        y_true = tf.squeeze(y_true, axis=-1)
+        y_true = tf.cast(y_true, tf.int32)
 
         # Step 2: Get soft target distributions for each sample
-        soft_targets = tf.gather(self.self_target_vectors, internal_indices)  # shape [B, C]
+        soft_targets = tf.gather(self.soft_target_tensor, y_true)  # shape [B, C]
 
         # Step 3: Compute log-softmax of logits
         log_probs = tf.nn.log_softmax(logits, axis=1)  # shape [B, C]
@@ -73,97 +78,40 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         kl_div = -tf.reduce_sum(soft_targets * log_probs, axis=1)  # shape [B]
 
         # Step 5: Apply sample-wise class weights
-        sample_weights = tf.gather(self.class_weights_tensor, internal_indices)  # shape [B]
+        sample_weights = tf.gather(self.class_weights_tensor, y_true)  # shape [B]
         weighted_loss = kl_div * sample_weights  # shape [B]
 
         # Step 6: Return batch mean
         return tf.reduce_mean(weighted_loss)
 
-    def label_interpretor(self, label_tensor):
-        """
-        Interpret a hierarchical label tensor and return the internal index.
-
-        Args:
-            label_tensor (tf.Tensor): Tensor of shape [3] with possibly -1 in unused levels.
-
-        Returns:
-            int: Internal class index.
-        """
-        # Convert to numpy array if needed (outside tf.function)
-        label_np = label_tensor.numpy() if tf.is_tensor(label_tensor) else label_tensor
-
-        # Step 1: Find last non-(-1) entry
-        for i in reversed(range(len(label_np))):
-            if label_np[i] != -1:
-                label_id = label_np[i]
-                break
-        else:
-            raise ValueError("Invalid label: all levels are -1")
-
-        # Step 3: Map to internal index
-        return self.label_map_internal[self.inverse_label_map[label_id]]
-    
-    def batch_label_interpretor(self, label_tensor_batch):
-        """
-        Vectorized interpreter for a batch of hierarchical label tensors.
-
-        Args:
-            label_tensor_batch (tf.Tensor): Tensor of shape [B, 3].
-
-        Returns:
-            tf.Tensor of shape [B] with internal indices.
-        """
-        # Convert to numpy array
-        label_np = label_tensor_batch.numpy() if tf.is_tensor(label_tensor_batch) else label_tensor_batch
-        batch_size = label_np.shape[0]
-        
-        internal_indices = []
-
-        for b in range(batch_size):
-            label_vec = label_np[b]
-            for i in reversed(range(3)):
-                if label_vec[i] != -1:
-                    label_id = label_vec[i]
-                    break
-            else:
-                raise ValueError(f"Invalid label at batch index {b}: all levels are -1")
-
-            string_label = self.inverse_label_map[label_id]
-            internal_index = self.label_map_internal[string_label]
-            internal_indices.append(internal_index)
-
-        return tf.convert_to_tensor(internal_indices, dtype=tf.int32)
-
     def normalize_class_weights(self, class_histogram):
         """
-        Compute normalized inverse-frequency class weights.
+        Compute normalized inverse-frequency weights per input class label.
 
         Args:
             class_histogram (dict): {class_label (str): count (int)}.
 
         Returns:
             dict: {class_label (str): normalized weight (float)}.
-                Zero-frequency classes are excluded.
         """
-        frequency_tensor = tf.zeros(4, dtype=tf.float32)
-        for key, value in class_histogram.items():
-            frequency_tensor += value * self.soft_class_vector[key]
+        # Step 1: Compute raw inverse-frequency weights
+        raw_weights = {}
+        for label, count in class_histogram.items():
+            if count > 0:
+                raw_weights[label] = 1.0 / count
+            else:
+                raw_weights[label] = 0.0  # Avoid division by zero
 
-        # Compute inverse frequency weights with zero-handling
-        inverse_weights = tf.where(
-            frequency_tensor > 0,
-            1.0 / frequency_tensor,
-            tf.zeros_like(frequency_tensor)
-        )
-
-        # Normalize the weights so they sum to 1
-        total = tf.reduce_sum(inverse_weights)
-        if total == 0:
+        # Step 2: Normalize weights so they sum to 1
+        total_weight = sum(raw_weights.values())
+        if total_weight == 0:
             raise ValueError("All class frequencies are zero — cannot normalize.")
 
-        normalized_weights = inverse_weights / total
+        normalized_weights = {
+            label: weight / total_weight for label, weight in raw_weights.items()
+        }
 
-        return normalized_weights  # tf.Tensor of shape [4]
+        return normalized_weights  # dict[str, float], length = 6
 
     def normalize_distance_matrix(self, distance_matrix, temperature):
         Z = np.max(distance_matrix) / temperature
@@ -223,13 +171,19 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         Convert all pre-computed dictionaries into tensor form.
         """
 
-        # Construct an internal label map for tensor indexing
-        self.label_map_internal = {key: i for i, key in enumerate(self.label_map.keys())}
-
         # Convert dict to tensor: shape [C(classification), C(label output)]
         self.soft_target_tensor = tf.stack(
             [self.soft_target_vectors[label] for label in sorted(self.label_map_internal, key=self.label_map_internal.get)],
             axis=0
+        )
+
+        # Convert class weights dict to tensor: shape [C(input class)]
+        self.class_weights_tensor = tf.convert_to_tensor(
+            [
+                self.class_weights.get(label, 0.0)  # fallback to 0.0 if label is missing
+                for label in sorted(self.label_map_internal, key=self.label_map_internal.get)
+            ],
+            dtype=tf.float32
         )
 
     def get_soft_class_vector(self, label=None):
@@ -259,19 +213,6 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             else:
                 raise ValueError(f"Label '{label}' not found in label map.")
 
-    def get_class_weights(self, label=None):
-        """
-        Get the class weights for a specific label.
-        If label is None, return the full class weights tensor.
-        """
-        if label is None:
-            return self.class_weights_tensor
-        else:
-            index = self.label_map_internal.get(label)
-            if index is not None:
-                return self.class_weights_tensor[index]
-            else:
-                raise ValueError(f"Label '{label}' not found in label map.")
 
 if __name__ == "__main__":
     # Dummy label config
@@ -308,9 +249,6 @@ if __name__ == "__main__":
     print("\n=== Full soft target tensor ===")
     print(loss_fn.get_target_vector())
 
-    print("\n=== Full class weights tensor ===")
-    print(loss_fn.get_class_weights())
-
     # Query individual labels
     labels_to_test = ["neurotypical", "epileptic", "focal", "right"]
 
@@ -320,5 +258,3 @@ if __name__ == "__main__":
         print(loss_fn.get_soft_class_vector(label))
         print("Target vector:")
         print(loss_fn.get_target_vector(label))
-        print("Class weight:")
-        print(loss_fn.get_class_weights(label))

@@ -6,7 +6,7 @@ import tensorflow as tf
 
 # TensorFlow-compatible generator wrapper for EEG datasets.
 class EEGRecordingTFGenerator():
-    def __init__(self, h5_file_path, dataset_name, label_map=None, transform=None, omit_channels=None, subject_ids=None):
+    def __init__(self, h5_file_path, dataset_name, label_config, transform=None, omit_channels=None, subject_ids=None):
         """
         Args:
             h5_file_path (str): Path to combined HDF5 file.
@@ -15,20 +15,17 @@ class EEGRecordingTFGenerator():
             omit_channels (list of str): Channel names to omit during loading.
             subject_ids (list of str): Subject ids to include in the dataset.
         """
-        if label_map is None:
-            label_map ={
-                'neurotypical': 0,
-                'epileptic': 1,
-                'focal': 2,
-                'generalized': 3,
-                'left': 4,
-                'right': 5
-           }
+        self.label_map = label_config["label_map"]
+        self.inverse_label_map = label_config["inverse_label_map"]
+
+        # Construct an internal label map for tensor indexing
+        self.label_map_internal = {key: i for i, key in enumerate(self.label_map.keys())}
+
 
         self.dataset = EEGRecordingDataset(
             h5_file_path=h5_file_path,
             dataset_name=dataset_name,
-            label_map=label_map,
+            label_map=self.label_map,
             transform=transform,
             omit_channels=omit_channels,
             subject_ids=subject_ids
@@ -66,20 +63,34 @@ class EEGRecordingTFGenerator():
             "label_mask": tf.TensorSpec(shape=(3,), dtype=tf.bool),
             "attention_mask": tf.TensorSpec(shape=(max_epochs,), dtype=tf.bool),
             "subject_id": tf.TensorSpec(shape=(), dtype=tf.string),
+            "internal_label": tf.TensorSpec(shape=(), dtype=tf.int32),
         }
 
         return output_signature
 
-    # Wrapper methods to create a TensorFlow compatible generator
     def cast_sample(self, sample):
-        # Convert torch.Tensors to numpy arrays and handle strings
-        return {
+        # Convert standard fields
+        out = {
             k: (
                 np.bytes_(v.encode("utf-8")) if isinstance(v, str)
                 else v.numpy() if hasattr(v, 'numpy') else np.asarray(v)
             )
             for k, v in sample.items()
         }
+
+        # Compute internal label
+        label_vec = out["labels"]
+        for i in reversed(range(3)):
+            if label_vec[i] != -1:
+                label_id = label_vec[i]
+                break
+        else:
+            raise ValueError(f"Invalid label vector: all -1")
+
+        string_label = self.inverse_label_map[label_id]
+        internal_index = self.label_map_internal[string_label]
+        out["internal_label"] = np.int32(internal_index)
+        return out
 
     def generator(self):
         for i in range(len(self.dataset)):

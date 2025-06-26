@@ -45,7 +45,7 @@ def load_label_config(json_path):
         "label_prior": label_prior
     }
 
-def load_eeg_datasets_split(h5_file_path, dataset_name, label_map=None,
+def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
                              omit_channels=None, seed=42,
                              train_frac=0.7, val_frac=0.2, test_frac=0.1,
                              batch_size=1, shuffle=True):
@@ -94,16 +94,16 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_map=None,
         generator = EEGRecordingTFGenerator(
             h5_file_path=h5_file_path,
             dataset_name=dataset_name,
-            label_map=label_map,
+            label_config=label_config,
             omit_channels=omit_channels,
             subject_ids=subject_ids
         )
         return generator.as_dataset(batch_size=batch_size, shuffle=shuffle)
-
+    
     return (
         make_tf_dataset(train_ids),
         make_tf_dataset(val_ids),
-        make_tf_dataset(test_ids)
+        make_tf_dataset(test_ids),
     )
 
 def get_model_size_tf(model):
@@ -126,34 +126,31 @@ def maybe_restore_checkpoint(checkpoint, manager):
     else:
         return False
 
-def compute_internal_label_histogram(dataset, inverse_label_map):
+def compute_label_histogram(dataset, label_map_config):
     """
-    Compute histogram of internal label indices from dataset using hierarchical label rules.
+    Compute histogram of internal label indices from dataset and return string label counts.
 
     Args:
-        dataset (tf.data.Dataset): Yields dicts with key "label" of shape [B, 3]
-        inverse_label_map (dict): {int_label: str_label}
-        label_map_internal (dict): {str_label: flat_index}
+        dataset (tf.data.Dataset): Yields dicts with key "labels" of shape [B], already internal indices.
+        label_map_config (dict): Contains 'label_map' (str → int)
 
     Returns:
         dict: {str_label: count}
     """
+    label_map = label_map_config["label_map"]  # {str_label: hierarchical_index}
+    
+    # Step 1: Rebuild internal flat index map
+    label_map_internal = {key: i for i, key in enumerate(label_map.keys())}
+    inverse_label_map_internal = {v: k for k, v in label_map_internal.items()}
+
     counter = Counter()
 
     for batch in dataset:
-        label_tensor = batch["label"]  # [B, 3]
+        label_tensor = batch["internal_label"]  # shape [B], internal flat indices
         labels_np = label_tensor.numpy() if tf.is_tensor(label_tensor) else label_tensor
 
-        for label_vec in labels_np:
-            # Use last non -1 entry
-            for i in reversed(range(3)):
-                if label_vec[i] != -1:
-                    label_id = int(label_vec[i])
-                    break
-            else:
-                raise ValueError(f"Invalid label: all levels are -1 — got {label_vec}")
-
-            label_str = inverse_label_map[label_id]
+        for internal_idx in labels_np:
+            label_str = inverse_label_map_internal[int(internal_idx)]
             counter[label_str] += 1
 
     return dict(counter)

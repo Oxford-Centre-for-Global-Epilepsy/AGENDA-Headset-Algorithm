@@ -82,7 +82,7 @@ class EEGNetFlatClassifier(Model):
         self.eegnet = EEGNet(**eegnet_args)
         pooling_args = pooling_args or {}
 
-        dummy_input = tf.zeros([1, 1, eegnet_args['num_channels'], eegnet_args['num_samples']])
+        dummy_input = tf.zeros([1, eegnet_args['num_channels'], eegnet_args['num_samples'], 1])  # [B, C, T, 1] for EEGNet
         feature_dim = self.eegnet(dummy_input).shape[-1]
 
         self.pool = AttentionPooling(input_dim=feature_dim, **pooling_args)
@@ -100,7 +100,7 @@ class EEGNetFlatClassifier(Model):
             dict with logits and optional weights/features
         """
         B, E, C, T = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], tf.shape(x)[3]
-        x = tf.reshape(x, [B * E, 1, C, T])
+        x = tf.reshape(x, [B * E, C, T, 1]) # matches the channel-last format expected by EEGNet
         epoch_features = self.eegnet(x, training=training)
         D = tf.shape(epoch_features)[-1]
         epoch_features = tf.reshape(epoch_features, [B, E, D])
