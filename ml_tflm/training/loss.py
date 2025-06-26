@@ -21,10 +21,10 @@ class StructureAwareLoss(tf.keras.losses.Loss):
                 distance_matrix = np.array([[float(x) for x in row] for row in reader])
         else:
             distance_matrix = np.array([
-                [0.0, 9.0, 9.0, 9.0],
-                [9.0, 0.0, 3.0, 3.0],
-                [9.0, 3.0, 0.0, 1.0],
-                [9.0, 3.0, 1.0, 0.0],
+                [0.0, 3.0, 3.0, 3.0],
+                [3.0, 0.0, 2.0, 2.0],
+                [3.0, 2.0, 0.0, 1.0],
+                [3.0, 2.0, 1.0, 0.0],
             ])
 
         # Compute the soft target vectors from input

@@ -86,7 +86,7 @@ class EEGNetFlatClassifier(Model):
         feature_dim = self.eegnet(dummy_input).shape[-1]
 
         self.pool = AttentionPooling(input_dim=feature_dim, **pooling_args)
-        self.classifier = layers.Dense(num_classes, activation='softmax')
+        self.classifier = layers.Dense(num_classes)  # No activation
 
     def call(self, x, attention_mask=None, return_attn_weights=False, return_features=False, training=False):
         """
@@ -97,7 +97,7 @@ class EEGNetFlatClassifier(Model):
             return_features: if True, returns pooled features
 
         Returns:
-            dict with softmax logits and optional weights/features
+            dict with logits and optional weights/features
         """
         B, E, C, T = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], tf.shape(x)[3]
         x = tf.reshape(x, [B * E, 1, C, T])
