@@ -3,8 +3,16 @@ import numpy as np
 import csv
 
 class StructureAwareLoss(tf.keras.losses.Loss):
-    def __init__(self, distance_csv_path=None, class_histogram=None):
+    def __init__(self, label_config, temperature=1, distance_csv_path=None, class_histogram=None):
         super().__init__()
+
+        # Load label configuration
+        self.label_map = label_config['label_map']
+        self.inverse_label_map = label_config['inverse_label_map']
+        self.label_prior = label_config['label_prior']
+
+        # Construct the soft class vector based on the label prior
+        self.soft_class_vector = self.construct_soft_class(self.label_prior)
 
         # Load or use default distance matrix
         if distance_csv_path:
@@ -18,37 +26,296 @@ class StructureAwareLoss(tf.keras.losses.Loss):
                 [9.0, 3.0, 0.0, 1.0],
                 [9.0, 3.0, 1.0, 0.0],
             ])
-        self.D = tf.convert_to_tensor(distance_matrix, dtype=tf.float32)
-        self.D = self.D / tf.reduce_max(self.D)  # normalize for stability
 
-        # Class histogram handling
+        # Compute the soft target vectors from input
+        self.distance_matrix = self.normalize_distance_matrix(distance_matrix, temperature)
+        self.soft_target_vectors = self.precompute_target_vector()
+
+        # Use unnormalized class histogram if not provided
         if class_histogram is None:
-            class_histogram = tf.ones([4], dtype=tf.float32)
+            class_histogram = {
+                "neurotypical": 1,
+                "epileptic": 1,
+                "focal": 1,
+                "generalized": 1,
+                "left": 1,
+                "right": 1
+            }
+ 
+        # Normalize class weights based on the histogram
+        self.class_weights = self.normalize_class_weights(class_histogram)
 
-        inv_freq = 1.0 / class_histogram
-        self.class_weights = inv_freq / tf.reduce_sum(inv_freq)  # shape: [C]
+        # Convert class weights to tensor
+        self.tensor_conversion()
 
     def call(self, y_true, logits):
         """
-        y_true: [B] integer class labels
-        logits: [B, C] raw output (before softmax)
+        Compute the structure-aware loss using precomputed soft targets and class weights.
+
+        Args:
+            y_true (tf.Tensor): shape [B, 3], hierarchical labels
+            logits (tf.Tensor): shape [B, C], raw model outputs
+
+        Returns:
+            tf.Tensor: scalar loss value
         """
-        y_true = tf.cast(tf.reshape(y_true, [-1]), tf.int32)  # [B]
-        logits = tf.convert_to_tensor(logits, dtype=tf.float32)  # [B, C]
 
-        # Structure-aware soft target q_y: [B, C]
-        D_y = tf.gather(self.D, y_true)                   # [B, C]
-        q = tf.exp(-D_y)
-        q = q / tf.reduce_sum(q, axis=1, keepdims=True)   # normalize to get prob
+        # Step 1: Convert hierarchical label → internal index
+        internal_indices = self.batch_label_interpretor(y_true)  # shape [B]
 
-        # Log-softmax over predicted logits
-        log_p = tf.nn.log_softmax(logits, axis=1)         # [B, C]
+        # Step 2: Get soft target distributions for each sample
+        soft_targets = tf.gather(self.self_target_vectors, internal_indices)  # shape [B, C]
 
-        # KL divergence: sum q_i log(q_i / p_i) = - sum q_i log(p_i) + const
-        loss_per_sample = -tf.reduce_sum(q * log_p, axis=1)  # [B]
+        # Step 3: Compute log-softmax of logits
+        log_probs = tf.nn.log_softmax(logits, axis=1)  # shape [B, C]
 
-        # Weight per sample by class inverse frequency
-        sample_weights = tf.gather(self.class_weights, y_true)  # [B]
-        weighted_loss = loss_per_sample * sample_weights
+        # Step 4: KL divergence between soft targets and predicted log-probs
+        kl_div = -tf.reduce_sum(soft_targets * log_probs, axis=1)  # shape [B]
 
+        # Step 5: Apply sample-wise class weights
+        sample_weights = tf.gather(self.class_weights_tensor, internal_indices)  # shape [B]
+        weighted_loss = kl_div * sample_weights  # shape [B]
+
+        # Step 6: Return batch mean
         return tf.reduce_mean(weighted_loss)
+
+    def label_interpretor(self, label_tensor):
+        """
+        Interpret a hierarchical label tensor and return the internal index.
+
+        Args:
+            label_tensor (tf.Tensor): Tensor of shape [3] with possibly -1 in unused levels.
+
+        Returns:
+            int: Internal class index.
+        """
+        # Convert to numpy array if needed (outside tf.function)
+        label_np = label_tensor.numpy() if tf.is_tensor(label_tensor) else label_tensor
+
+        # Step 1: Find last non-(-1) entry
+        for i in reversed(range(len(label_np))):
+            if label_np[i] != -1:
+                label_id = label_np[i]
+                break
+        else:
+            raise ValueError("Invalid label: all levels are -1")
+
+        # Step 3: Map to internal index
+        return self.label_map_internal[self.inverse_label_map[label_id]]
+    
+    def batch_label_interpretor(self, label_tensor_batch):
+        """
+        Vectorized interpreter for a batch of hierarchical label tensors.
+
+        Args:
+            label_tensor_batch (tf.Tensor): Tensor of shape [B, 3].
+
+        Returns:
+            tf.Tensor of shape [B] with internal indices.
+        """
+        # Convert to numpy array
+        label_np = label_tensor_batch.numpy() if tf.is_tensor(label_tensor_batch) else label_tensor_batch
+        batch_size = label_np.shape[0]
+        
+        internal_indices = []
+
+        for b in range(batch_size):
+            label_vec = label_np[b]
+            for i in reversed(range(3)):
+                if label_vec[i] != -1:
+                    label_id = label_vec[i]
+                    break
+            else:
+                raise ValueError(f"Invalid label at batch index {b}: all levels are -1")
+
+            string_label = self.inverse_label_map[label_id]
+            internal_index = self.label_map_internal[string_label]
+            internal_indices.append(internal_index)
+
+        return tf.convert_to_tensor(internal_indices, dtype=tf.int32)
+
+    def normalize_class_weights(self, class_histogram):
+        """
+        Compute normalized inverse-frequency class weights.
+
+        Args:
+            class_histogram (dict): {class_label (str): count (int)}.
+
+        Returns:
+            dict: {class_label (str): normalized weight (float)}.
+                Zero-frequency classes are excluded.
+        """
+        # Compute inverse frequencies for non-zero entries
+        inv_freq = {label: 1.0 / count for label, count in class_histogram.items() if count > 0}
+
+        # Normalize to make sum = 1
+        total = sum(inv_freq.values())
+        if total == 0:
+            raise ValueError("All class frequencies are zero.")
+
+        return {label: weight / total for label, weight in inv_freq.items()}
+
+    def normalize_distance_matrix(self, distance_matrix, temperature):
+        Z = np.max(distance_matrix) / temperature
+        distance_matrix_normalized = tf.convert_to_tensor(distance_matrix / Z, dtype=tf.float32)
+
+        return distance_matrix_normalized
+
+    def construct_soft_class(self, label_prior):
+        """
+        Construct the soft class vector based on the label prior.
+        label_prior: dictionary of binary class prior at each decision point
+            e.g., {'epileptic': 0.5, 'focal': 0.5, 'right': 0.5}
+        """
+
+        # Construct the soft class vector from the label prior
+        soft_class_vector = {
+            "neurotypical": tf.convert_to_tensor([1.0, 0.0, 0.0, 0.0], dtype=tf.float32),
+            "epileptic": tf.convert_to_tensor([0.0, 
+                                               1.0-label_prior['focal'], 
+                                               label_prior['focal']*(1.0-label_prior['right']), 
+                                               label_prior['focal']*label_prior['right']], dtype=tf.float32),
+            "focal": tf.convert_to_tensor([0.0, 
+                                           0.0, 
+                                           1.0-label_prior['right'], 
+                                           label_prior['right']], dtype=tf.float32),
+            "generalized": tf.convert_to_tensor([0.0, 1.0, 0.0, 0.0], dtype=tf.float32),
+            "left": tf.convert_to_tensor([0.0, 0.0, 1.0, 0.0], dtype=tf.float32),
+            "right": tf.convert_to_tensor([0.0, 0.0, 0.0, 1.0], dtype=tf.float32)
+        }
+
+        return soft_class_vector
+    
+    def precompute_target_vector(self):
+        """
+        Precompute the target vector for the soft class vector.
+        """
+        bolzmann_matrix = tf.exp(-self.distance_matrix)
+
+        # Create a new dict to hold the soft target vectors
+        soft_target_vectors = {}
+
+        # Precompute the target vector from bolzmann matrix
+        for key, vector in self.soft_class_vector.items():
+            # Compute the joint soft target distribution (in matrix form)
+            soft_target_matrix = bolzmann_matrix * tf.expand_dims(vector, axis=1)
+            soft_target_matrix = soft_target_matrix / tf.reduce_sum(soft_target_matrix)
+
+            # Collapse the matrix into soft target vector
+            soft_target_vector = tf.reduce_sum(soft_target_matrix, axis=0)
+
+            soft_target_vectors[key] = soft_target_vector
+
+        return soft_target_vectors
+            
+    def tensor_conversion(self):
+        """
+        Convert all pre-computed dictionaries into tensor form.
+        """
+
+        # Construct an internal label map for tensor indexing
+        self.label_map_internal = {key: i for i, key in enumerate(self.label_map.keys())}
+
+        # Convert dict to tensor: shape [C, C]
+        self.soft_target_tensor = tf.stack(
+            [self.soft_target_vectors[label] for label in sorted(self.label_map_internal, key=self.label_map_internal.get)],
+            axis=0
+        )
+
+        # Convert to tensor using internal label ordering
+        self.class_weights_tensor = tf.constant(
+            [self.class_weights[label] for label in sorted(self.label_map_internal, key=self.label_map_internal.get)],
+            dtype=tf.float32
+        )
+
+    def get_soft_class_vector(self, label=None):
+        """
+        Get the soft class vector for a specific label.
+        If label is None, return the full soft class vector dict.
+        """
+        if label is None:
+            return self.soft_class_vector
+        else:
+            if label in self.soft_class_vector:
+                return self.soft_class_vector[label]
+            else:
+                raise ValueError(f"Label '{label}' not found in soft class vector.")
+
+
+    def get_target_vector(self, label=None):
+        """
+        Get the target vector for a specific label.
+        If label is None, return the full soft target tensor.
+        """
+        if label is None:
+            return self.soft_target_tensor
+        else:
+            index = self.label_map_internal.get(label)
+            if index is not None:
+                return self.soft_target_tensor[index]
+            else:
+                raise ValueError(f"Label '{label}' not found in label map.")
+
+    def get_class_weights(self, label=None):
+        """
+        Get the class weights for a specific label.
+        If label is None, return the full class weights tensor.
+        """
+        if label is None:
+            return self.class_weights_tensor
+        else:
+            index = self.label_map_internal.get(label)
+            if index is not None:
+                return self.class_weights_tensor[index]
+            else:
+                raise ValueError(f"Label '{label}' not found in label map.")
+
+if __name__ == "__main__":
+    # Dummy label config
+    label_config = {
+        "label_map": {
+            "neurotypical": 0,
+            "epileptic": 1,
+            "focal": 2,
+            "generalized": 3,
+            "left": 4,
+            "right": 5
+        },
+        "inverse_label_map": {
+            0: "neurotypical",
+            1: "epileptic",
+            2: "focal",
+            3: "generalized",
+            4: "left",
+            5: "right"
+        },
+        "label_prior": {
+            "epileptic": 0.5,
+            "focal": 0.5,
+            "right": 0.5
+        }
+    }
+
+    # Instantiate the loss
+    loss_fn = StructureAwareLoss(label_config=label_config, temperature=5)
+
+    print("=== Full soft class vector ===")
+    print(loss_fn.get_soft_class_vector())
+
+    print("\n=== Full soft target tensor ===")
+    print(loss_fn.get_target_vector())
+
+    print("\n=== Full class weights tensor ===")
+    print(loss_fn.get_class_weights())
+
+    # Query individual labels
+    labels_to_test = ["neurotypical", "epileptic", "focal", "right"]
+
+    for label in labels_to_test:
+        print(f"\n--- For label: {label} ---")
+        print("Soft class vector:")
+        print(loss_fn.get_soft_class_vector(label))
+        print("Target vector:")
+        print(loss_fn.get_target_vector(label))
+        print("Class weight:")
+        print(loss_fn.get_class_weights(label))
