@@ -18,7 +18,7 @@ if __name__ == "__main__":
     train_dataset, val_dataset, test_dataset = utils.load_eeg_datasets_split(
         h5_file_path="ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h5",
         dataset_name="anyu_dataset_south_africa_monopolar_standard_10_20",
-        label_config=label_config, train_frac=0.5, val_frac=0.4, test_frac=0.1
+        label_config=label_config, train_frac=0.8, val_frac=0.1, test_frac=0.1
     )
     
     class_hist = utils.compute_label_histogram(train_dataset, label_config)
@@ -28,7 +28,8 @@ if __name__ == "__main__":
     # Create the loss evalutaion function
     loss_fn = StructureAwareLoss(
         label_config=label_config,
-        temperature=5.0,
+        clip_value=5.0,
+        temperature=0.5,
         class_histogram=class_hist,
     )
 
@@ -36,22 +37,26 @@ if __name__ == "__main__":
     output_sig = train_dataset.element_spec
     data_spec = output_sig["data"]  # tf.TensorSpec(shape=(E, C, T), ...)
 
+    for sample in train_dataset.take(1):
+        print(sample["data"].shape)  # Should print (E, C, T)
+
+
     # Step 3: Use to configure EEGNet
     _, E, C, T = data_spec.shape
 
     eegnet_args = {
         "num_channels": C,
         "num_samples": T,
-        "F1": 4,
-        "D": 1,
-        "F2": 4,
-        "dropout_rate": 0.5,
+        "F1": 8,
+        "D": 2,
+        "F2": 16,
+        "dropout_rate": 0.25,
         "kernel_length": 64,
         "activation": tf.nn.elu
     }
 
     pooling_args = {
-        "hidden_dim": 8,            # or 128 if your model is larger
+        "hidden_dim": 64,            # or 128 if your model is larger
         "activation": tf.nn.tanh     # or tf.nn.relu, tf.nn.elu depending on your preference
     }
 
@@ -101,8 +106,10 @@ if __name__ == "__main__":
         val_loss_metric.update_state(loss)
 
     # === Training Loop ===
-    for epoch in range(1, 21):  # 20 epochs
-        print(f"\nEpoch {epoch} / 20")
+    EPOCHS = 40
+
+    for epoch in range(1, EPOCHS+1):
+        print(f"\nEpoch {epoch} / {EPOCHS}")
 
         train_loss_metric.reset_state()
         val_loss_metric.reset_state()
@@ -118,29 +125,29 @@ if __name__ == "__main__":
         print(f"Epoch {epoch} Summary: Train Loss = {train_loss_metric.result().numpy():.4f}, "
               f"Val Loss = {val_loss_metric.result().numpy():.4f}")
         
-        """
-        # Metric Evaluation
+        # === Metric Evaluation ===
         all_preds = []
         all_targets = []
 
-        for batch in val_dataset:
+        for batch in train_dataset:
             x = batch["data"]
             attn_mask = batch["attention_mask"]
-            true_labels = batch["internal_label"]  # flattened ground truth (e.g. string or int labels)
+            true_labels = batch["internal_label"]
 
             outputs = model(x, training=False, attention_mask=attn_mask)
+            logits = outputs["logits"]  # shape [B, C]
 
-            # Collect raw outputs (dicts) and raw labels
-            all_preds.append(outputs)
+            all_preds.append(logits)
             all_targets.extend(true_labels.numpy().tolist())
 
+        # Stack logits into a single [N, C] tensor
+        all_preds_tensor = tf.concat(all_preds, axis=0)
 
-        # Compute and print metrics (evaluator handles casting)
-        metrics = evaluator.evaluate(all_preds["logits"], all_targets)
+        # Optional: convert targets to tensor
+        all_targets_tensor = tf.convert_to_tensor(all_targets, dtype=tf.int32)
+
+        # Now pass to evaluator
+        metrics = evaluator.evaluate(all_preds_tensor, all_targets_tensor)
         print("Val F1: {:.4f}, Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}".format(
             metrics["f1"], metrics["accuracy"], metrics["precision"], metrics["recall"]
         ))
-
-        """
-
-

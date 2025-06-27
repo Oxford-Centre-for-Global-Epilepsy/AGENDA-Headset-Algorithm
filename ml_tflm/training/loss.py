@@ -3,7 +3,7 @@ import numpy as np
 import csv
 
 class StructureAwareLoss(tf.keras.losses.Loss):
-    def __init__(self, label_config, temperature=1, distance_csv_path=None, class_histogram=None):
+    def __init__(self, label_config, clip_value=None, temperature=1, distance_csv_path=None, class_histogram=None):
         super().__init__()
 
         # Load label configuration
@@ -52,6 +52,8 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         # Convert class weights to tensor
         self.tensor_conversion()
 
+        self.clip_value = tf.abs(clip_value)
+
     def call(self, y_true, logits):
         """
         Compute the structure-aware loss using precomputed soft targets and class weights.
@@ -71,12 +73,16 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         # Step 2: Get soft target distributions for each sample
         soft_targets = tf.gather(self.soft_target_tensor, y_true)  # shape [B, C]
 
-        tf.print(soft_targets)
-        tf.print(logits)
-        
         # Step 3: Compute log-softmax of logits
+        if self.clip_value is not None:
+            logits = tf.clip_by_value(logits, clip_value_min=-self.clip_value, clip_value_max=self.clip_value) # Clip logits to preserve stability at confident predictions
         log_probs = tf.nn.log_softmax(logits, axis=1)  # shape [B, C]
 
+        tf.print("Soft Target Vectors:", soft_targets, summarize=-1)
+        probs = tf.nn.softmax(logits, axis=1)
+        tf.print("Softmax probabilities:", probs, summarize=-1)
+
+        
         # Step 4: KL divergence between soft targets and predicted log-probs
         kl_div = -tf.reduce_sum(soft_targets * log_probs, axis=1)  # shape [B]
 
@@ -117,10 +123,8 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         return normalized_weights  # dict[str, float], length = 6
 
     def normalize_distance_matrix(self, distance_matrix, temperature):
-        Z = np.max(distance_matrix) / temperature
-        distance_matrix_normalized = tf.convert_to_tensor(distance_matrix / Z, dtype=tf.float32)
-
-        return distance_matrix_normalized
+        distance_matrix = tf.convert_to_tensor(distance_matrix, dtype=tf.float32)
+        return distance_matrix / temperature
 
     def construct_soft_class(self, label_prior):
         """
@@ -230,8 +234,9 @@ def masked_cross_entropy(logits, targets, mask, class_weights=None):
         Scalar tensor representing the masked cross-entropy loss
     """
     mask = tf.cast(mask, dtype=tf.bool)
-    if tf.reduce_sum(tf.cast(mask, tf.float32)) == 0.0:
-        return tf.constant(0.0)
+    if tf.reduce_sum(tf.cast(mask, tf.float32)) == 0:
+        return tf.stop_gradient(tf.constant(0.0))
+
 
     logits = tf.boolean_mask(logits, mask)
     targets = tf.boolean_mask(targets, mask)

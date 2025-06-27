@@ -86,10 +86,11 @@ class EEGRecordingTFGenerator():
                 break
         else:
             raise ValueError(f"Invalid label vector: all -1")
-
+        
         string_label = self.inverse_label_map[label_id]
         internal_index = self.label_map_internal[string_label]
         out["internal_label"] = np.int32(internal_index)
+
         return out
 
     def generator(self):

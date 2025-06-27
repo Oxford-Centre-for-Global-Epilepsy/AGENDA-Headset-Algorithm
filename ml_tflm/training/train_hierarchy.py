@@ -14,7 +14,7 @@ if __name__ == "__main__":
     train_dataset, val_dataset, test_dataset = utils.load_eeg_datasets_split(
         h5_file_path="ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h5",
         dataset_name="anyu_dataset_south_africa_monopolar_standard_10_20",
-        label_config=label_config, train_frac=0.5, val_frac=0.4, test_frac=0.1
+        label_config=label_config, train_frac=0.1, val_frac=0.8, test_frac=0.1
     )
     
     class_hist = utils.compute_label_histogram(train_dataset, label_config)
@@ -34,15 +34,15 @@ if __name__ == "__main__":
         "num_channels": C,
         "num_samples": T,
         "F1": 4,
-        "D": 1,
-        "F2": 4,
-        "dropout_rate": 0.5,
+        "D": 2,
+        "F2": 8,
+        "dropout_rate": 0.25,
         "kernel_length": 64,
         "activation": tf.nn.elu
     }
 
     pooling_args = {
-        "hidden_dim": 8,            # or 128 if your model is larger
+        "hidden_dim": 64,            # or 128 if your model is larger
         "activation": tf.nn.tanh     # or tf.nn.relu, tf.nn.elu depending on your preference
     }
 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         all_preds = []
         all_targets = []
 
-        for batch in val_dataset:
+        for batch in train_dataset:
             x = batch["data"]
             attn_mask = batch["attention_mask"]
             true_labels = batch["internal_label"]  # flattened ground truth (e.g. string or int labels)

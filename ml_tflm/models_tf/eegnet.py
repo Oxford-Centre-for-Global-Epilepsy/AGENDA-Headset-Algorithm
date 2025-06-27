@@ -68,7 +68,7 @@ class EEGNet(tf.keras.Model):
         Parameters
         ----------
         inputs : Tensor
-            Shape: [batch, 1, channels, time]
+            Shape: [batch, channels, time, 1]
         return_features : bool
             If True, returns intermediate feature maps.
 
