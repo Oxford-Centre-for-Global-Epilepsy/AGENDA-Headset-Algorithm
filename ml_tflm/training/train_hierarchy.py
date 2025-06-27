@@ -1,6 +1,8 @@
 from ml_tflm.models_tf.classifiers import EEGNetHierarchicalClassifier
 import ml_tflm.training.train_utils as utils
 from ml_tflm.training.loss import HierarchicalLoss
+from ml_tflm.training.cast_prediction import cast_prediction_hierarchical
+from ml_tflm.training.metrics import metric_evaluator
 
 import tensorflow as tf
 
@@ -12,7 +14,7 @@ if __name__ == "__main__":
     train_dataset, val_dataset, test_dataset = utils.load_eeg_datasets_split(
         h5_file_path="ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h5",
         dataset_name="anyu_dataset_south_africa_monopolar_standard_10_20",
-        label_config=label_config
+        label_config=label_config, train_frac=0.5, val_frac=0.4, test_frac=0.1
     )
     
     class_hist = utils.compute_label_histogram(train_dataset, label_config)
@@ -49,6 +51,8 @@ if __name__ == "__main__":
         eegnet_args=eegnet_args,
         pooling_args=pooling_args
     )
+
+    evaluator = metric_evaluator(label_config=label_config, prediction_caster=cast_prediction_hierarchical)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
     EPOCHS = 20
@@ -87,3 +91,23 @@ if __name__ == "__main__":
 
         print(f"Val Loss: {val_loss.result():.4f}")
 
+        # --- Metric Evaluation ---
+        all_preds = []
+        all_targets = []
+
+        for batch in val_dataset:
+            x = batch["data"]
+            attn_mask = batch["attention_mask"]
+            true_labels = batch["internal_label"]  # flattened ground truth (e.g. string or int labels)
+
+            outputs = model(x, training=False, attention_mask=attn_mask)
+
+            # Collect raw outputs (dicts) and raw labels
+            all_preds.append(outputs)
+            all_targets.extend(true_labels.numpy().tolist())
+
+        # Compute and print metrics (evaluator handles casting)
+        metrics = evaluator.evaluate(all_preds, all_targets)
+        print("Val F1: {:.4f}, Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}".format(
+            metrics["f1"], metrics["accuracy"], metrics["precision"], metrics["recall"]
+        ))

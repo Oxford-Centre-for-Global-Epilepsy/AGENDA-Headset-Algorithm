@@ -71,6 +71,9 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         # Step 2: Get soft target distributions for each sample
         soft_targets = tf.gather(self.soft_target_tensor, y_true)  # shape [B, C]
 
+        tf.print(soft_targets)
+        tf.print(logits)
+        
         # Step 3: Compute log-softmax of logits
         log_probs = tf.nn.log_softmax(logits, axis=1)  # shape [B, C]
 
