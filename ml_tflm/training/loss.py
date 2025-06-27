@@ -213,6 +213,85 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             else:
                 raise ValueError(f"Label '{label}' not found in label map.")
 
+def masked_cross_entropy(logits, targets, mask, class_weights=None):
+    """
+    Computes masked cross-entropy loss for binary/multiclass classification.
+    
+    Args:
+        logits: Tensor of shape [B, C]
+        targets: Tensor of shape [B], integer class labels
+        mask: Boolean Tensor of shape [B]
+        class_weights: Optional Tensor of shape [C], weights for each class
+    
+    Returns:
+        Scalar tensor representing the masked cross-entropy loss
+    """
+    mask = tf.cast(mask, dtype=tf.bool)
+    if tf.reduce_sum(tf.cast(mask, tf.float32)) == 0.0:
+        return tf.constant(0.0)
+
+    logits = tf.boolean_mask(logits, mask)
+    targets = tf.boolean_mask(targets, mask)
+
+    if class_weights is not None:
+        weights = tf.gather(class_weights, targets)
+        loss = tf.keras.losses.sparse_categorical_crossentropy(targets, logits, from_logits=True)
+        return tf.reduce_mean(loss * weights)
+    else:
+        loss = tf.keras.losses.sparse_categorical_crossentropy(targets, logits, from_logits=True)
+        return tf.reduce_mean(loss)
+
+class HierarchicalLoss(tf.keras.losses.Loss):
+    def __init__(self, weights=(1.0, 1.0, 1.0), level1_weights=None, level2_weights=None, level3_weights=None):
+        super().__init__()
+        self.weights = weights
+        self.level1_weights = level1_weights
+        self.level2_weights = level2_weights
+        self.level3_weights = level3_weights
+
+    def call(self, y_true, y_pred):
+        """
+        Args:
+            y_true: A dict with:
+                'targets': Tensor of shape [B, 3]
+                'label_mask': Tensor of shape [B, 3] (1 = valid, 0 = invalid)
+            y_pred: A dict with:
+                'level1_logits': [B, 2],
+                'level2_logits': [B, 2],
+                'level3_logits': [B, 2]
+        Returns:
+            Scalar tensor loss
+        """
+        targets = y_true['targets']
+        label_mask = tf.cast(y_true['label_mask'], dtype=tf.bool)
+
+        # Level 1: already binary
+        loss1 = masked_cross_entropy(
+            y_pred["level1_logits"],
+            targets[:, 0],
+            label_mask[:, 0],
+            class_weights=self.level1_weights
+        )
+
+        # Level 2: remap 2=focal → 0, 3=generalized → 1
+        level2_target = tf.where(targets[:, 1] == 3, 1, 0)
+        loss2 = masked_cross_entropy(
+            y_pred["level2_logits"],
+            level2_target,
+            label_mask[:, 1],
+            class_weights=self.level2_weights
+        )
+
+        # Level 3: remap 4=left → 0, 5=right → 1
+        level3_target = tf.where(targets[:, 2] == 5, 1, 0)
+        loss3 = masked_cross_entropy(
+            y_pred["level3_logits"],
+            level3_target,
+            label_mask[:, 2],
+            class_weights=self.level3_weights
+        )
+
+        return self.weights[0] * loss1 + self.weights[1] * loss2 + self.weights[2] * loss3
 
 if __name__ == "__main__":
     # Dummy label config
