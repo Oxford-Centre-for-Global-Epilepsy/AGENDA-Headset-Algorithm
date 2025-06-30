@@ -45,51 +45,35 @@ def load_label_config(json_path):
         "label_prior": label_prior
     }
 
-def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
-                             omit_channels=None, seed=42,
-                             train_frac=0.7, val_frac=0.2, test_frac=0.1,
-                             batch_size=1, shuffle=True):
-    """
-    Splits EEG dataset into train/val/test TensorFlow datasets by subject ID.
-
-    Args:
-        h5_file_path (str): Path to the HDF5 file containing EEG data.
-        dataset_name (str): Root group name in the HDF5 file.
-        label_map (dict, optional): Maps string labels to integer IDs.
-        omit_channels (list[str], optional): Channel names to exclude.
-        seed (int): Random seed for reproducibility.
-        train_frac (float): Fraction of data for training set.
-        val_frac (float): Fraction for validation set.
-        test_frac (float): Fraction for test set.
-        batch_size (int): Batch size for TF datasets.
-        shuffle (bool): Whether to shuffle dataset during loading.
-
-    Returns:
-        Tuple of (train_dataset, val_dataset, test_dataset) as tf.data.Dataset
-    """
-
-    # Ensure fractions sum to 1
-    assert abs(train_frac + val_frac + test_frac - 1.0) < 1e-6, "Fractions must sum to 1"
-
-    # Read subject IDs from HDF5 file
+def load_eeg_datasets_split(h5_file_path, dataset_name, label_config, 
+                            val_frac=0.2, test_frac=0.1, k_fold=False,
+                            omit_channels=None, seed=42, 
+                            batch_size=1, shuffle=True):
+    # Load subject IDs
     with h5py.File(h5_file_path, "r") as f:
         subject_ids = sorted(list(f[dataset_name].keys()))
 
-    # Shuffle subject IDs deterministically
+    # Shuffle subject IDs
     random.seed(seed)
     random.shuffle(subject_ids)
-
-    # Compute split indices
     n = len(subject_ids)
-    train_end = int(n * train_frac)
-    val_end = train_end + int(n * val_frac)
 
-    # Partition subject IDs
-    train_ids = subject_ids[:train_end]
-    val_ids = subject_ids[train_end:val_end]
-    test_ids = subject_ids[val_end:]
+    # Split off test set
+    test_size = int(n * test_frac)
+    test_ids = subject_ids[:test_size]
+    remaining_ids = subject_ids[test_size:]
+    n_remain = len(remaining_ids)
 
-    # Helper to wrap subject IDs in a TF-compatible generator
+    # Determine number of folds
+    fold_size = int(n_remain * val_frac)
+    num_folds = max(1, n_remain // fold_size)
+
+    # Interleaved split: assign each ID to a fold in round-robin fashion
+    folds = [[] for _ in range(num_folds)]
+    for idx, sid in enumerate(remaining_ids):
+        folds[idx % num_folds].append(sid)
+
+    # Dataset wrapper
     def make_tf_dataset(subject_ids):
         generator = EEGRecordingTFGenerator(
             h5_file_path=h5_file_path,
@@ -99,12 +83,24 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
             subject_ids=subject_ids
         )
         return generator.as_dataset(batch_size=batch_size, shuffle=shuffle)
-    
-    return (
-        make_tf_dataset(train_ids),
-        make_tf_dataset(val_ids),
-        make_tf_dataset(test_ids),
-    )
+
+    test_dataset = make_tf_dataset(test_ids)
+
+    if not k_fold:
+        # Use first fold as validation, rest as training
+        val_ids = folds[0]
+        train_ids = [id for i, fold in enumerate(folds) if i != 0 for id in fold]
+        return make_tf_dataset(train_ids), make_tf_dataset(val_ids), test_dataset
+
+    else:
+        # Return list of (train, val) datasets
+        train_val_sets = []
+        for i in range(num_folds):
+            val_ids = folds[i]
+            train_ids = [id for j, fold in enumerate(folds) if j != i for id in fold]
+            train_val_sets.append((make_tf_dataset(train_ids), make_tf_dataset(val_ids)))
+
+        return train_val_sets, test_dataset
 
 def get_model_size_tf(model):
     size_bytes = sum([tf.keras.backend.count_params(w) * w.dtype.size for w in model.weights])

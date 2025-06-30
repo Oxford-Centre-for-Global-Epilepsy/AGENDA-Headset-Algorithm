@@ -18,7 +18,7 @@ if __name__ == "__main__":
     train_dataset, val_dataset, test_dataset = utils.load_eeg_datasets_split(
         h5_file_path="ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h5",
         dataset_name="anyu_dataset_south_africa_monopolar_standard_10_20",
-        label_config=label_config, train_frac=0.8, val_frac=0.1, test_frac=0.1
+        label_config=label_config, val_frac=0.1, test_frac=0.1
     )
     
     class_hist = utils.compute_label_histogram(train_dataset, label_config)
