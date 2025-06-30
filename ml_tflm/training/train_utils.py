@@ -56,51 +56,66 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
     # Shuffle subject IDs
     random.seed(seed)
     random.shuffle(subject_ids)
-    n = len(subject_ids)
+    n_total = len(subject_ids)
 
-    # Split off test set
-    test_size = int(n * test_frac)
-    test_ids = subject_ids[:test_size]
-    remaining_ids = subject_ids[test_size:]
-    n_remain = len(remaining_ids)
-
-    # Determine number of folds
-    fold_size = int(n_remain * val_frac)
-    num_folds = max(1, n_remain // fold_size)
-
-    # Interleaved split: assign each ID to a fold in round-robin fashion
-    folds = [[] for _ in range(num_folds)]
-    for idx, sid in enumerate(remaining_ids):
-        folds[idx % num_folds].append(sid)
-
-    # Dataset wrapper
-    def make_tf_dataset(subject_ids):
-        generator = EEGRecordingTFGenerator(
-            h5_file_path=h5_file_path,
-            dataset_name=dataset_name,
-            label_config=label_config,
-            omit_channels=omit_channels,
-            subject_ids=subject_ids
-        )
-        return generator.as_dataset(batch_size=batch_size, shuffle=shuffle)
-
-    test_dataset = make_tf_dataset(test_ids)
+    # Compute split sizes
+    n_test = round(n_total * test_frac)
+    test_ids = subject_ids[:n_test]
+    remaining_ids = subject_ids[n_test:]
+    n_remaining = len(remaining_ids)
 
     if not k_fold:
-        # Use first fold as validation, rest as training
-        val_ids = folds[0]
-        train_ids = [id for i, fold in enumerate(folds) if i != 0 for id in fold]
-        return make_tf_dataset(train_ids), make_tf_dataset(val_ids), test_dataset
+        n_val = round(n_remaining * val_frac)
+        val_ids = remaining_ids[:n_val]
+        train_ids = remaining_ids[n_val:]
+
+        if len(train_ids) == 0 or len(val_ids) == 0:
+            raise ValueError("Not enough data for training or validation split. "
+                             f"{len(train_ids)=}, {len(val_ids)=}, {n_total=}")
+
+        return (
+            _make_tf_dataset(train_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle),
+            _make_tf_dataset(val_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle),
+            _make_tf_dataset(test_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle)
+            if n_test > 0 else None
+        )
 
     else:
-        # Return list of (train, val) datasets
+        # K-Fold mode
+        n_val = round(n_remaining * val_frac)
+        fold_size = max(1, n_val)
+        num_folds = max(2, n_remaining // fold_size)
+
+        # Interleaved fold assignment
+        folds = [[] for _ in range(num_folds)]
+        for idx, sid in enumerate(remaining_ids):
+            folds[idx % num_folds].append(sid)
+
         train_val_sets = []
         for i in range(num_folds):
             val_ids = folds[i]
-            train_ids = [id for j, fold in enumerate(folds) if j != i for id in fold]
-            train_val_sets.append((make_tf_dataset(train_ids), make_tf_dataset(val_ids)))
+            train_ids = [sid for j, fold in enumerate(folds) if j != i for sid in fold]
 
+            if len(train_ids) == 0 or len(val_ids) == 0:
+                raise ValueError(f"Fold {i}: empty training or validation set.")
+
+            train_val_sets.append((
+                _make_tf_dataset(train_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle),
+                _make_tf_dataset(val_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle)
+            ))
+
+        test_dataset = _make_tf_dataset(test_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle) if n_test > 0 else None
         return train_val_sets, test_dataset
+
+def _make_tf_dataset(subject_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle):
+    generator = EEGRecordingTFGenerator(
+        h5_file_path=h5_file_path,
+        dataset_name=dataset_name,
+        label_config=label_config,
+        omit_channels=omit_channels,
+        subject_ids=subject_ids
+    )
+    return generator.as_dataset(batch_size=batch_size, shuffle=shuffle)
 
 def get_model_size_tf(model):
     size_bytes = sum([tf.keras.backend.count_params(w) * w.dtype.size for w in model.weights])

@@ -78,10 +78,11 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             logits = tf.clip_by_value(logits, clip_value_min=-self.clip_value, clip_value_max=self.clip_value) # Clip logits to preserve stability at confident predictions
         log_probs = tf.nn.log_softmax(logits, axis=1)  # shape [B, C]
 
+        '''
         tf.print("Soft Target Vectors:", soft_targets, summarize=-1)
         probs = tf.nn.softmax(logits, axis=1)
         tf.print("Softmax probabilities:", probs, summarize=-1)
-
+        '''
         
         # Step 4: KL divergence between soft targets and predicted log-probs
         kl_div = -tf.reduce_sum(soft_targets * log_probs, axis=1)  # shape [B]
@@ -330,15 +331,18 @@ if __name__ == "__main__":
     # Instantiate the loss
     loss_fn = StructureAwareLoss(label_config=label_config, temperature=5)
 
+    '''
     print("=== Full soft class vector ===")
     print(loss_fn.get_soft_class_vector())
 
     print("\n=== Full soft target tensor ===")
     print(loss_fn.get_target_vector())
-
+    '''
+    
     # Query individual labels
     labels_to_test = ["neurotypical", "epileptic", "focal", "right"]
 
+    
     for label in labels_to_test:
         print(f"\n--- For label: {label} ---")
         print("Soft class vector:")

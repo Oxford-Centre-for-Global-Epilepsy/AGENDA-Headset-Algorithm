@@ -3,7 +3,7 @@ import numpy as np
 import tqdm
 import ml_tflm.training.train_utils as utils
 
-class EEGTrainer:
+class Trainer:
     def __init__(self, model, loss_fn, optimizer, evaluator,
                  train_dataset, val_dataset, test_dataset=None,
                  dataset_keys=None):
@@ -33,7 +33,6 @@ class EEGTrainer:
             outputs = self.model(x, attention_mask=mask, training=True)
             loss = self.loss_fn(y, outputs["logits"])
         grads = tape.gradient(loss, self.model.trainable_variables)
-        tf.print("Gradient norm:", tf.linalg.global_norm(grads))
         self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
         self.train_loss_metric.update_state(loss)
 

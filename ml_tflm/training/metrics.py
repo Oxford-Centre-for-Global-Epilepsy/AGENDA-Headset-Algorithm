@@ -60,9 +60,9 @@ class metric_evaluator():
             }
 
         return {
-            "f1": f1_score(target_indices, pred_indices, average="macro"),
+            "f1": f1_score(target_indices, pred_indices, average="macro", zero_division=0),
             "accuracy": accuracy_score(target_indices, pred_indices),
-            "precision": precision_score(target_indices, pred_indices, average="macro"),
-            "recall": recall_score(target_indices, pred_indices, average="macro"),
+            "precision": precision_score(target_indices, pred_indices, average="macro", zero_division=0),
+            "recall": recall_score(target_indices, pred_indices, average="macro", zero_division=0),
             "confusion_matrix": confusion_matrix(target_indices, pred_indices)
         }
