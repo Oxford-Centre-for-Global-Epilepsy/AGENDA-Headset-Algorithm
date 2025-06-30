@@ -1,0 +1,5 @@
+val_frac: 0.3
+test_frac: 0.0
+
+epochs: 40
+steps_per_epoch: 10

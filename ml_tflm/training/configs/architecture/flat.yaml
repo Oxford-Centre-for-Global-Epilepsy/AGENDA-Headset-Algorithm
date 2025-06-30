@@ -1,0 +1,23 @@
+model:
+  _target_: ml_tflm.models_tf.classifiers.EEGNetFlatClassifier
+  num_classes: 4
+  eegnet_args: ${component.feature_extractor}
+  pooling_args: ${component.pooling_layer}
+
+loss:
+  _target_: ml_tflm.training.loss.StructureAwareLoss
+
+  clip_value: 5.0
+  temperature: 0.5
+
+evaluator:
+  _target_: ml_tflm.training.metrics.metric_evaluator
+  label_config: null
+  prediction_caster: cast_prediction_flat
+
+model_input_lookup:
+  x: data
+  attention_mask: attention_mask
+
+model_target_lookup:
+  targets: internal_label

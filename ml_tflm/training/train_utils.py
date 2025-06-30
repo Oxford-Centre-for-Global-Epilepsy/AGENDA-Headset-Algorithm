@@ -165,3 +165,11 @@ def compute_label_histogram(dataset, label_map_config):
             counter[label_str] += 1
 
     return dict(counter)
+
+def get_activation(name):
+    return {
+        "relu": tf.nn.relu,
+        "elu": tf.nn.elu,
+        "tanh": tf.nn.tanh,
+        "sigmoid": tf.nn.sigmoid
+    }[name]

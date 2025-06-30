@@ -1,9 +1,9 @@
-from ml_tflm.training.cast_prediction import cast_labels
+from ml_tflm.training.cast_prediction import cast_labels, CASTER_REGISTRY
 import numpy as np
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
 
 class metric_evaluator():
-    def __init__(self, label_config, prediction_caster):
+    def __init__(self, label_config, prediction_caster: str):
         """
         Initializes the metric evaluator with a label configuration.
 
@@ -25,7 +25,7 @@ class metric_evaluator():
         self.flat_index_map_internal = {self.label_map_internal[k]: v for k, v in flat_index_map.items()}
 
         # Load the caster function for predictions
-        self.prediction_caster = prediction_caster
+        self.prediction_caster = CASTER_REGISTRY[prediction_caster]
 
     def evaluate(self, preds, targets, ignore_index=-1):
         """

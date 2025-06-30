@@ -81,3 +81,9 @@ def cast_labels(labels, internal_index_map):
         labels = labels.numpy().tolist()
 
     return tf.convert_to_tensor([internal_index_map[label] for label in labels], dtype=tf.int32)
+
+# Caster registry for Hydra lookup
+CASTER_REGISTRY = {
+    "cast_prediction_flat": cast_prediction_flat,
+    "cast_prediction_hierarchical": cast_prediction_hierarchical,
+}

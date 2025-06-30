@@ -1,0 +1,8 @@
+defaults:
+  - architecture: hierarchical
+  - dataset: minimal
+  - optimizer: adam
+  - training: default
+  - component/feature_extractor: EEGNet
+  - component/pooling_layer: attention_pooling
+  - _self_

@@ -259,7 +259,7 @@ def masked_cross_entropy(logits, targets, mask, class_weights=None):
 
 
 class HierarchicalLoss(tf.keras.losses.Loss):
-    def __init__(self, weights=(1.0, 1.0, 1.0), level1_weights=None, level2_weights=None, level3_weights=None):
+    def __init__(self, weights=(1.0, 1.0, 1.0), level1_weights=None, level2_weights=None, level3_weights=None, label_config=None, class_histogram=None):
         super().__init__()
         self.weights = weights
         self.level1_weights = level1_weights

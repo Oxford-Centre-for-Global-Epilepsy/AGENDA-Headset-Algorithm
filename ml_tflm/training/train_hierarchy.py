@@ -6,7 +6,6 @@ import tensorflow as tf
 from ml_tflm.models_tf.classifiers import EEGNetHierarchicalClassifier
 import ml_tflm.training.train_utils as utils
 from ml_tflm.training.loss import HierarchicalLoss
-from ml_tflm.training.cast_prediction import cast_prediction_hierarchical
 from ml_tflm.training.metrics import metric_evaluator
 from ml_tflm.training.trainer import Trainer
 
@@ -55,15 +54,8 @@ def prepare_training_components():
 
     evaluator = metric_evaluator(
         label_config=label_config,
-        prediction_caster=cast_prediction_hierarchical
+        prediction_caster="cast_prediction_hierarchical"
     )
-
-    # Set key mapping for Trainer
-    input_keys = {
-        "targets": "internal_label",     # Used for metric evaluator
-        "raw_targets": "labels",         # Used for hierarchical loss
-        "target_mask": "label_mask"
-    }
 
     input_keys = {
         "x": "data",
