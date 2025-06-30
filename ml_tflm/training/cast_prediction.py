@@ -1,20 +1,18 @@
 import tensorflow as tf
-from ml_tflm.training.train_utils import load_label_config
 
-import functools
-import operator
-
-def cast_prediction_flat(logits_tensor):
+def cast_prediction_flat(output_list):
     """
-    Casts logits tensor to predicted class indices.
+    Casts a list of model outputs to predicted class indices.
 
     Args:
-        logits_tensor (tf.Tensor): Tensor of shape [B, num_classes]
+        output_list (list[dict]): Each dict contains key "logits" (tf.Tensor of shape [B_i, num_classes])
 
     Returns:
         tf.Tensor: Predicted class indices (int32)
     """
-    return tf.argmax(logits_tensor, axis=1, output_type=tf.int32)
+    logits_batch = tf.concat([entry["logits"] for entry in output_list], axis=0)
+    return tf.argmax(logits_batch, axis=1, output_type=tf.int32)
+
 
 def cast_prediction_hierarchical(predictions):
     """

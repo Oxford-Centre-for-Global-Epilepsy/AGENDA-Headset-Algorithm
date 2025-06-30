@@ -64,9 +64,12 @@ def prepare_training_components():
     )
 
     input_keys = {
-        "inputs": "data",
-        "mask": "attention_mask",
-        "targets": "internal_label"
+        "x": "data",
+        "attention_mask": "attention_mask",
+    }
+
+    target_keys = {
+        "targets": "internal_label",
     }
 
     return Trainer(
@@ -76,7 +79,8 @@ def prepare_training_components():
         evaluator=evaluator,
         train_dataset=train_dataset,
         val_dataset=val_dataset,
-        dataset_keys=input_keys
+        model_input_lookup=input_keys,
+        model_target_lookup=target_keys
     )
 
 

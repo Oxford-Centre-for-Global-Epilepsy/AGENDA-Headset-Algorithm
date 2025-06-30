@@ -1,4 +1,4 @@
-from ml_tflm.training.cast_prediction import cast_prediction_flat, cast_prediction_hierarchical, cast_labels
+from ml_tflm.training.cast_prediction import cast_labels
 import numpy as np
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
 

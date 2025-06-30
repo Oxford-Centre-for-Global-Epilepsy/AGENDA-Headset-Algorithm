@@ -1,33 +1,35 @@
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+import tensorflow as tf
+
 from ml_tflm.models_tf.classifiers import EEGNetHierarchicalClassifier
 import ml_tflm.training.train_utils as utils
 from ml_tflm.training.loss import HierarchicalLoss
 from ml_tflm.training.cast_prediction import cast_prediction_hierarchical
 from ml_tflm.training.metrics import metric_evaluator
+from ml_tflm.training.trainer import Trainer
 
-import tensorflow as tf
 
-if __name__ == "__main__":
-    # Load label configuration
+def prepare_training_components():
+    # Load label config
     label_config = utils.load_label_config("ml_tflm/training/label_map.JSON")
 
-    # Load EEG datasets
+    # Load datasets
     train_dataset, val_dataset, test_dataset = utils.load_eeg_datasets_split(
         h5_file_path="ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h5",
         dataset_name="anyu_dataset_south_africa_monopolar_standard_10_20",
-        label_config=label_config, train_frac=0.1, val_frac=0.8, test_frac=0.1
+        label_config=label_config,
+        val_frac=0.3,
+        test_frac=0.1,
     )
-    
+
+    # Class histogram (optional for logging)
     class_hist = utils.compute_label_histogram(train_dataset, label_config)
     print("Class histogram:", class_hist)
 
-    # Create the loss evalutaion function
-    loss_fn = HierarchicalLoss()
-
-    # Step 2: Extract input shape info from output_signature
-    output_sig = train_dataset.element_spec
-    data_spec = output_sig["data"]  # tf.TensorSpec(shape=(E, C, T), ...)
-
-    # Step 3: Use to configure EEGNet
+    # Build model config
+    data_spec = train_dataset.element_spec["data"]
     _, E, C, T = data_spec.shape
 
     eegnet_args = {
@@ -42,72 +44,53 @@ if __name__ == "__main__":
     }
 
     pooling_args = {
-        "hidden_dim": 64,            # or 128 if your model is larger
-        "activation": tf.nn.tanh     # or tf.nn.relu, tf.nn.elu depending on your preference
+        "hidden_dim": 64,
+        "activation": tf.nn.tanh
     }
 
-    # Create the classifier model
-    model = EEGNetHierarchicalClassifier(
-        eegnet_args=eegnet_args,
-        pooling_args=pooling_args
+    # Instantiate components
+    model = EEGNetHierarchicalClassifier(eegnet_args=eegnet_args, pooling_args=pooling_args)
+    loss_fn = HierarchicalLoss()
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+
+    evaluator = metric_evaluator(
+        label_config=label_config,
+        prediction_caster=cast_prediction_hierarchical
     )
 
-    evaluator = metric_evaluator(label_config=label_config, prediction_caster=cast_prediction_hierarchical)
+    # Set key mapping for Trainer
+    input_keys = {
+        "targets": "internal_label",     # Used for metric evaluator
+        "raw_targets": "labels",         # Used for hierarchical loss
+        "target_mask": "label_mask"
+    }
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
-    EPOCHS = 20
+    input_keys = {
+        "x": "data",
+        "attention_mask": "attention_mask",
+    }
 
-    for epoch in range(EPOCHS):
-        print(f"\nEpoch {epoch+1}/{EPOCHS}")
-        train_loss = tf.keras.metrics.Mean()
-        
-        # --- Training ---
-        for batch in train_dataset:
-            x = batch["data"]
-            y = batch["labels"]
-            m = batch["label_mask"]
-            attn_mask = batch["attention_mask"]
+    target_keys = {
+        "targets": "labels",
+        "label_mask": "label_mask"
+    }
 
-            with tf.GradientTape() as tape:
-                outputs = model(x, training=True, attention_mask=attn_mask)
-                loss = loss_fn({"targets": y, "label_mask": m}, outputs)
-            grads = tape.gradient(loss, model.trainable_variables)
-            optimizer.apply_gradients(zip(grads, model.trainable_variables))
-            train_loss.update_state(loss)
+    return Trainer(
+        model=model,
+        optimizer=optimizer,
+        loss_fn=loss_fn,
+        evaluator=evaluator,
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
+        model_input_lookup=input_keys,
+        model_target_lookup=target_keys
+    )
 
-        print(f"Train Loss: {train_loss.result():.4f}")
 
-        # --- Validation ---
-        val_loss = tf.keras.metrics.Mean()
-        for batch in val_dataset:
-            x = batch["data"]
-            y = batch["labels"]
-            m = batch["label_mask"]
-            attn_mask = batch["attention_mask"]
+def main():
+    trainer = prepare_training_components()
+    trainer.train_loop(epochs=20, steps_per_epoch=10)
 
-            outputs = model(x, training=False, attention_mask=attn_mask)
-            loss = loss_fn({"targets": y, "label_mask": m}, outputs)
-            val_loss.update_state(loss)
 
-        print(f"Val Loss: {val_loss.result():.4f}")
-
-        # --- Metric Evaluation ---
-        all_preds = []
-        all_targets = []
-
-        for batch in train_dataset:
-            x = batch["data"]
-            attn_mask = batch["attention_mask"]
-            true_labels = batch["internal_label"]  # flattened ground truth (e.g. string or int labels)
-
-            outputs = model(x, training=False, attention_mask=attn_mask)
-
-            # Collect raw outputs (dicts) and raw labels
-            all_preds.append(outputs)
-            all_targets.extend(true_labels.numpy().tolist())
-
-        # Compute and print metrics (evaluator handles casting)
-        metrics = evaluator.evaluate(all_preds, all_targets)
-        print("Val F1: {:.4f}, Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}".format(
-            metrics["f1"], metrics["accuracy"], metrics["precision"], metrics["recall"]
-        ))
+if __name__ == "__main__":
+    main()

@@ -54,21 +54,23 @@ class StructureAwareLoss(tf.keras.losses.Loss):
 
         self.clip_value = tf.abs(clip_value)
 
-    def call(self, y_true, logits):
+    def call(self, y_true, output):
         """
         Compute the structure-aware loss using precomputed soft targets and class weights.
 
         Args:
-            y_true (tf.Tensor): shape [B, 3], hierarchical labels
-            logits (tf.Tensor): shape [B, C], raw model outputs
+            y_true (dict): {
+                'targets': tf.Tensor of shape [B, 3], hierarchical labels
+            }
+            output (dict): contains 'logits': tf.Tensor of shape [B, C], raw model outputs
 
         Returns:
             tf.Tensor: scalar loss value
         """
-
-        # Step 1: Squeeze y_true to remove last dimension if present
-        y_true = tf.squeeze(y_true, axis=-1)
+        y_true = tf.squeeze(y_true["targets"], axis=-1)
         y_true = tf.cast(y_true, tf.int32)
+
+        logits = output["logits"]
 
         # Step 2: Get soft target distributions for each sample
         soft_targets = tf.gather(self.soft_target_tensor, y_true)  # shape [B, C]
@@ -224,31 +226,37 @@ class StructureAwareLoss(tf.keras.losses.Loss):
 def masked_cross_entropy(logits, targets, mask, class_weights=None):
     """
     Computes masked cross-entropy loss for binary/multiclass classification.
-    
+
     Args:
         logits: Tensor of shape [B, C]
         targets: Tensor of shape [B], integer class labels
         mask: Boolean Tensor of shape [B]
         class_weights: Optional Tensor of shape [C], weights for each class
-    
+
     Returns:
         Scalar tensor representing the masked cross-entropy loss
     """
     mask = tf.cast(mask, dtype=tf.bool)
-    if tf.reduce_sum(tf.cast(mask, tf.float32)) == 0:
-        return tf.stop_gradient(tf.constant(0.0))
+    mask_sum = tf.reduce_sum(tf.cast(mask, tf.float32))
 
+    def compute_loss():
+        masked_logits = tf.boolean_mask(logits, mask)
+        masked_targets = tf.boolean_mask(targets, mask)
 
-    logits = tf.boolean_mask(logits, mask)
-    targets = tf.boolean_mask(targets, mask)
+        loss = tf.keras.losses.sparse_categorical_crossentropy(masked_targets, masked_logits, from_logits=True)
 
-    if class_weights is not None:
-        weights = tf.gather(class_weights, targets)
-        loss = tf.keras.losses.sparse_categorical_crossentropy(targets, logits, from_logits=True)
-        return tf.reduce_mean(loss * weights)
-    else:
-        loss = tf.keras.losses.sparse_categorical_crossentropy(targets, logits, from_logits=True)
-        return tf.reduce_mean(loss)
+        if class_weights is not None:
+            weights = tf.gather(class_weights, masked_targets)
+            return tf.reduce_mean(loss * weights)
+        else:
+            return tf.reduce_mean(loss)
+
+    return tf.cond(
+        tf.equal(mask_sum, 0.0),
+        lambda: tf.constant(0.0, dtype=tf.float32),
+        compute_loss
+    )
+
 
 class HierarchicalLoss(tf.keras.losses.Loss):
     def __init__(self, weights=(1.0, 1.0, 1.0), level1_weights=None, level2_weights=None, level3_weights=None):
