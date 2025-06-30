@@ -13,13 +13,16 @@ import tensorflow as tf
 def prepare_training_components():
     label_config = utils.load_label_config("ml_tflm/training/label_map.JSON")
 
-    train_dataset, val_dataset, test_dataset = utils.load_eeg_datasets_split(
+    train_val_sets, test_dataset = utils.load_eeg_datasets_split(
         h5_file_path="ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h5",
         dataset_name="anyu_dataset_south_africa_monopolar_standard_10_20",
         label_config=label_config,
         val_frac=0.3,
         test_frac=0.0
     )
+
+    train_dataset = train_val_sets[0][0]
+    val_dataset = train_val_sets[0][1]
 
     class_hist = utils.compute_label_histogram(train_dataset, label_config)
 

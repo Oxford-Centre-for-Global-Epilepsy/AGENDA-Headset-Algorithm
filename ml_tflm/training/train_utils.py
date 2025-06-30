@@ -72,13 +72,15 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
         if len(train_ids) == 0 or len(val_ids) == 0:
             raise ValueError("Not enough data for training or validation split. "
                              f"{len(train_ids)=}, {len(val_ids)=}, {n_total=}")
-
-        return (
+        
+        train_val_sets = [(
             _make_tf_dataset(train_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle),
-            _make_tf_dataset(val_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle),
-            _make_tf_dataset(test_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle)
-            if n_test > 0 else None
-        )
+            _make_tf_dataset(val_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle)
+            ),]
+        
+        test_dataset =_make_tf_dataset(test_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle) if n_test > 0 else None
+
+        return train_val_sets, test_dataset
 
     else:
         # K-Fold mode

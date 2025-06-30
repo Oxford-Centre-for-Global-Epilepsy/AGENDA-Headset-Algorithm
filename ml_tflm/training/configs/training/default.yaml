@@ -1,5 +1,6 @@
 val_frac: 0.3
 test_frac: 0.0
+k_fold: False
 
 epochs: 40
 steps_per_epoch: 10

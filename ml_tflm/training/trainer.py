@@ -1,8 +1,12 @@
 import tensorflow as tf
+import tensorflow_model_optimization as tfmot
 
 class Trainer:
     def __init__(self, model, loss_fn, optimizer, evaluator,
-                 train_dataset, val_dataset, model_input_lookup, model_target_lookup, test_dataset=None):
+                 train_dataset, val_dataset, model_input_lookup, model_target_lookup, test_dataset=None, QAT=False):
+        if QAT == True:
+            model = tfmot.quantization.keras.quantize_annotate_model(model)
+           
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optimizer
