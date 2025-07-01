@@ -126,7 +126,7 @@ class AttentionPooling(tf.keras.layers.Layer):
 
 class EEGNetFlatClassifierQAT(tf.keras.Model):
     def __init__(self,
-                 eegnet_qat,
+                 eegnet_args,
                  pooling_args=None,
                  num_classes=4):  # Only valid class combinations
         """
@@ -138,7 +138,7 @@ class EEGNetFlatClassifierQAT(tf.keras.Model):
             num_classes (int): number of valid hierarchical class combinations
         """
         super().__init__()
-        self.eegnet = eegnet_qat
+        self.eegnet = get_eegnet_qat(eegargs=eegnet_args)
         pooling_args = pooling_args or {}
 
         dummy_input = tf.zeros([1, eegnet_args['num_channels'], eegnet_args['num_samples'], 1])  # [B, C, T, 1] for EEGNet
@@ -175,11 +175,6 @@ class EEGNetFlatClassifierQAT(tf.keras.Model):
 
         return out
 
-def get_classifier_QAT(eegnet_args, pooling_args):
-    qat_model = get_eegnet_qat(eegnet_args)
-    return EEGNetFlatClassifierQAT(eegnet_qat=qat_model,
-                                   pooling_args=pooling_args,
-                                   num_classes=4)
 
 if __name__ == "__main__":
     eegnet_args = {
@@ -198,6 +193,8 @@ if __name__ == "__main__":
         "activation": tf.nn.tanh
     }
 
-    qat_model = get_classifier_QAT(eegnet_args, pooling_args)
+    EEGNetFlatClassifierQAT(eegnet_args=eegnet_args,
+                            pooling_args=pooling_args,
+                            num_classes=4)
     
     print("Quantisation Successful!")

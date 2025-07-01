@@ -1,8 +1,8 @@
 defaults:
-  - architecture: hierarchical
+  - architecture: flat_qat
   - dataset: minimal
   - optimizer: adam
   - training: default
-  - component/feature_extractor: EEGNet
+  - component/feature_extractor: EEGNetRelu
   - component/pooling_layer: attention_pooling
   - _self_
