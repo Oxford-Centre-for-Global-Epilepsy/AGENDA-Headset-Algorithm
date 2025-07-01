@@ -217,3 +217,6 @@ ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h
 
 # Ignore the backup files created by Draw.io
 ml_tflm/.$tflm_implementation.drawio.bkp
+
+# Ignore the checkpoints files generated
+ml_tflm/training/checkpoints

@@ -66,6 +66,11 @@ def main(cfg: DictConfig):
             val_dataset=val_dataset,
             model_input_lookup=cfg.architecture.model_input_lookup,
             model_target_lookup=cfg.architecture.model_target_lookup,
+            save_ckpt=cfg.training.save_ckpt,
+            ckpt_interval=cfg.training.ckpt_interval,
+            ckpt_save_dir=cfg.training.ckpt_save_dir,
+            load_ckpt=cfg.training.load_ckpt,
+            ckpt_load_dir=cfg.training.ckpt_load_dir
         )
 
         # --- Train ---

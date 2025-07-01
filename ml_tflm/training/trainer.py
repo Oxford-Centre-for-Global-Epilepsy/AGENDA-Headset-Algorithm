@@ -1,11 +1,12 @@
 import tensorflow as tf
 import tensorflow_model_optimization as tfmot
+from ml_tflm.training.train_utils import get_checkpoint_manager, maybe_restore_checkpoint
 
 class Trainer:
     def __init__(self, model, loss_fn, optimizer, evaluator,
-                 train_dataset, val_dataset, model_input_lookup, model_target_lookup, test_dataset=None, QAT=False):
-        if QAT == True:
-            model = tfmot.quantization.keras.quantize_annotate_model(model)
+                 train_dataset, val_dataset, model_input_lookup, model_target_lookup, test_dataset=None,
+                 save_ckpt=False, ckpt_interval=1, ckpt_save_dir="./checkpoints",
+                 load_ckpt=False, ckpt_load_dir=None):
            
         self.model = model
         self.loss_fn = loss_fn
@@ -16,9 +17,34 @@ class Trainer:
         self.test_dataset = test_dataset
         self.model_input_lookup = model_input_lookup
         self.model_target_lookup = model_target_lookup
-
         self.train_loss_metric = tf.keras.metrics.Mean(name="train_loss")
         self.val_loss_metric = tf.keras.metrics.Mean(name="val_loss")
+
+        self.ckpt = None
+        self.ckpt_manager = None
+
+        # Create the checkpoint object regardless of loading or saving
+        if load_ckpt or save_ckpt:
+            self.ckpt = tf.train.Checkpoint(model=self.model, optimizer=self.optimizer)
+
+        # If loading is enabled, try to restore from ckpt_load_dir
+        if load_ckpt:
+            if ckpt_load_dir is None:
+                raise ValueError("Checkpoint load requested, but ckpt_load_dir is None.")
+            
+            _, load_manager = get_checkpoint_manager(self.model, self.optimizer, ckpt_load_dir)
+            restored = maybe_restore_checkpoint(self.ckpt, load_manager)
+
+            if restored:
+                print(f"[✓] Restored checkpoint from {load_manager.latest_checkpoint}")
+            else:
+                print("[!] No checkpoint found — training will start from scratch.")
+
+        # If saving is enabled, create save manager using ckpt_save_dir
+        if save_ckpt:
+            self.ckpt_interval = ckpt_interval
+            self.ckpt_save_dir = ckpt_save_dir
+            self.ckpt_manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_save_dir, max_to_keep=5)
 
     @tf.function
     def train_step(self, batch):
@@ -83,4 +109,8 @@ class Trainer:
             print("Val F1: {:.4f}, Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}".format(
                 metrics["f1"], metrics["accuracy"], metrics["precision"], metrics["recall"]
             ))
+
+            if self.ckpt_manager and (epoch % self.ckpt_interval == 0):
+                save_path = self.ckpt_manager.save()
+                print(f"Checkpoint saved at {save_path}")
 
