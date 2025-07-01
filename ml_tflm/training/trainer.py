@@ -36,9 +36,9 @@ class Trainer:
             restored = maybe_restore_checkpoint(self.ckpt, load_manager)
 
             if restored:
-                print(f"[✓] Restored checkpoint from {load_manager.latest_checkpoint}")
+                print(f"Restored checkpoint from {load_manager.latest_checkpoint}")
             else:
-                print("[!] No checkpoint found — training will start from scratch.")
+                print("No checkpoint found — training will start from scratch.")
 
         # If saving is enabled, create save manager using ckpt_save_dir
         if save_ckpt:
