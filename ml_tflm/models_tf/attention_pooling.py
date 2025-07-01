@@ -1,5 +1,4 @@
 import tensorflow as tf
-from tensorflow.keras import layers
 
 class AttentionPooling(tf.keras.layers.Layer):
     """
@@ -17,8 +16,8 @@ class AttentionPooling(tf.keras.layers.Layer):
     def __init__(self, input_dim, hidden_dim=128, activation=tf.nn.tanh):
         super().__init__()
         self.activation = activation
-        self.dense1 = layers.Dense(hidden_dim)
-        self.dense2 = layers.Dense(1)
+        self.dense1 = tf.keras.layers.Dense(hidden_dim)
+        self.dense2 = tf.keras.layers.Dense(1)
 
     def call(self, x, mask=None, return_weights=False):
         """
