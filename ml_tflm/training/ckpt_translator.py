@@ -65,12 +65,12 @@ def main(cfg: DictConfig):
 
     # Feature extractor (for embedded/edge use)
     feature_path = os.path.join(output_dir, "model_FEATURE_EXTRACTOR.keras")
-    model.feature_extractor.save(feature_path)
+    model.feature_extractor.save(feature_path, save_format="tf")
     print(f"Feature extractor saved to {feature_path}")
 
     # Classifier head (for mobile/host processing)
     classifier_path = os.path.join(output_dir, "model_CLASSIFIER_HEAD.keras")
-    model.attention_classifier.save(classifier_path)
+    model.attention_classifier.save(classifier_path, save_format="tf")
     print(f"Classifier head saved to {classifier_path}")
 
 
