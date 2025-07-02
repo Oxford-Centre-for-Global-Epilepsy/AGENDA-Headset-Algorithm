@@ -46,6 +46,9 @@ class Trainer:
             self.ckpt_save_dir = ckpt_save_dir
             self.ckpt_manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_save_dir, max_to_keep=5)
 
+        # Track best val loss and corresponding metrics
+        self.metric_history = []
+
     @tf.function
     def train_step(self, batch):
         model_inputs = {k: batch[v] for k, v in self.model_input_lookup.items()}
@@ -114,3 +117,26 @@ class Trainer:
                 save_path = self.ckpt_manager.save()
                 print(f"Checkpoint saved at {save_path}")
 
+            # Log current epoch metrics
+            self.metric_history.append({
+                "val_loss": self.val_loss_metric.result().numpy(),
+                **metrics
+            })
+
+    def get_metrics(self, mode="best"):
+        """
+        Returns either the best epoch (based on F1) or full history.
+
+        mode: "best" or "all"
+        """
+        if mode == "all":
+            return self.metric_history
+
+        if not self.metric_history:
+            return None
+        
+        # Define best by lowest validation loss
+        best_epoch = min(self.metric_history, key=lambda m: m["val_loss"])
+        return best_epoch
+
+        

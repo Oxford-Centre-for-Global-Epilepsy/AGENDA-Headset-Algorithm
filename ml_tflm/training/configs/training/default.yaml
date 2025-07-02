@@ -2,7 +2,7 @@ val_frac: 0.3
 test_frac: 0.0
 k_fold: False
 
-epochs: 40
+epochs: 20
 steps_per_epoch: 10
 
 save_ckpt: True
@@ -11,3 +11,5 @@ ckpt_save_dir: "ml_tflm/training/checkpoints"
 
 load_ckpt: False
 ckpt_load_dir: "ml_tflm/training/checkpoints"
+
+metric_save_dir: "ml_tflm/training/results/train_metrics.json"

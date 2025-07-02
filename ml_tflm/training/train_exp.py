@@ -8,8 +8,26 @@ from ml_tflm.training.trainer import Trainer
 import ml_tflm.training.train_utils as utils
 from hydra.utils import instantiate
 
+import json
+from pathlib import Path
+import numpy as np
 
-@hydra.main(config_path="configs", config_name="config", version_base=None)
+
+def to_serializable(obj):
+    if isinstance(obj, dict):
+        return {k: to_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [to_serializable(v) for v in obj]
+    elif isinstance(obj, (np.integer, int)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, float, tf.Tensor)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
+
+@hydra.main(config_path="configs", config_name="config", version_base="1.1")
 def main(cfg: DictConfig):
     # --- Load label config ---
     label_config = utils.load_label_config("ml_tflm/training/label_map.JSON")
@@ -23,6 +41,9 @@ def main(cfg: DictConfig):
         test_frac=cfg.training.test_frac,
         k_fold=cfg.training.k_fold
     )
+
+    # --- Define metric holder ---
+    train_metrics = []
 
     for train_val_set in train_val_sets:
         train_dataset = train_val_set[0]
@@ -78,6 +99,19 @@ def main(cfg: DictConfig):
             epochs=cfg.training.epochs,
             steps_per_epoch=cfg.training.steps_per_epoch
         )
+
+        train_metrics.append(trainer.get_metrics())
+
+    # Prepare directory
+    save_path = cfg.training.metric_save_dir
+    Path(os.path.dirname(save_path)).mkdir(parents=True, exist_ok=True)
+
+    # Find best result (lowest validation loss)
+    best_result = min(train_metrics, key=lambda d: d["val_loss"])
+
+    # Dump result in a JSON-safe way
+    with open(save_path, "w") as f:
+        json.dump(to_serializable(best_result), f, indent=2)
 
 
 if __name__ == "__main__":

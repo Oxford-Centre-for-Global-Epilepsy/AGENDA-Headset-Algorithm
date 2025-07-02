@@ -107,6 +107,7 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
             ))
 
         test_dataset = _make_tf_dataset(test_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle) if n_test > 0 else None
+        print(f"Dataset Splitter: {num_folds}-fold dataset generated")
         return train_val_sets, test_dataset
 
 def _make_tf_dataset(subject_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle):
@@ -171,7 +172,13 @@ def compute_label_histogram(dataset, label_map_config):
 def get_activation(name):
     return {
         "relu": tf.nn.relu,
+        "leaky_relu": tf.nn.leaky_relu,
         "elu": tf.nn.elu,
+        "selu": tf.nn.selu,
         "tanh": tf.nn.tanh,
-        "sigmoid": tf.nn.sigmoid
+        "sigmoid": tf.nn.sigmoid,
+        "hard_sigmoid": tf.keras.activations.hard_sigmoid,
+        "hard_swish": tf.nn.hard_swish,
+        "gelu": tf.nn.gelu,
+        "swish": tf.nn.swish
     }[name]
