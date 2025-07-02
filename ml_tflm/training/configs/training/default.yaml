@@ -9,5 +9,5 @@ save_ckpt: True
 ckpt_interval: 5
 ckpt_save_dir: "ml_tflm/training/checkpoints"
 
-load_ckpt: True
+load_ckpt: False
 ckpt_load_dir: "ml_tflm/training/checkpoints"

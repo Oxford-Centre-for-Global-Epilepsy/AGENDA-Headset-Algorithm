@@ -75,6 +75,7 @@ def get_eegnet_qat(eegargs):
     quantise_model = tfmot.quantization.keras.quantize_model
     return quantise_model(model)
 
+@tf.keras.utils.register_keras_serializable()
 class AttentionPooling(tf.keras.layers.Layer):
     """
     Learnable attention pooling over epochs.
@@ -88,27 +89,16 @@ class AttentionPooling(tf.keras.layers.Layer):
     activation : tf.keras activation function
         Non-linearity used between dense layers (default = tf.nn.tanh).
     """
-    def __init__(self, input_dim, hidden_dim=128, activation=tf.nn.tanh):
-        super().__init__()
+    def __init__(self, input_dim, hidden_dim=128, activation=tf.nn.tanh, **kwargs):
+        super().__init__(**kwargs)
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
         self.activation = activation
+
         self.dense1 = tf.keras.layers.Dense(hidden_dim)
         self.dense2 = tf.keras.layers.Dense(1)
 
-    def call(self, x, mask=None, return_weights=False):
-        """
-        Parameters
-        ----------
-        x : Tensor of shape [B, E, D]
-            Batch of EEGNet features over epochs.
-        mask : Boolean Tensor of shape [B, E], optional
-            Attention mask indicating valid epochs.
-        return_weights : bool
-            If True, also return attention weights.
-
-        Returns
-        -------
-        Tensor of shape [B, D] or tuple (pooled, weights)
-        """
+    def call(self, x, mask=None):
         scores = self.dense2(self.activation(self.dense1(x)))  # [B, E, 1]
         scores = tf.squeeze(scores, axis=-1)  # [B, E]
 
@@ -118,17 +108,50 @@ class AttentionPooling(tf.keras.layers.Layer):
         weights = tf.nn.softmax(scores, axis=1)  # [B, E]
         weights_expanded = tf.expand_dims(weights, axis=-1)  # [B, E, 1]
         pooled = tf.reduce_sum(x * weights_expanded, axis=1)  # [B, D]
-
-        if return_weights:
-            return pooled, weights
-
         return pooled
+
+    def get_config(self):
+        return {
+            "input_dim": self.input_dim,
+            "hidden_dim": self.hidden_dim,
+            "activation": tf.keras.activations.serialize(self.activation)
+        }
+
+    @classmethod
+    def from_config(cls, config):
+        config["activation"] = tf.keras.activations.deserialize(config["activation"])
+        return cls(**config)
+
+def get_attention_classifier(feature_dim, pooling_args, num_classes=4, name="AttentionClassifier"):
+    """
+    Create a Keras Functional model that accepts feature sequence and optional attention mask.
+
+    Inputs:
+    - feature_sequence: [B, E, D]
+    - attention_mask:   [B, E] (bool mask)
+
+    Output:
+    - logits:           [B, num_classes]
+    """
+    # Inputs
+    feature_input = tf.keras.Input(shape=(None, feature_dim), name="feature_sequence")   # [B, E, D]
+    mask_input = tf.keras.Input(shape=(None,), dtype=tf.bool, name="attention_mask")     # [B, E]
+
+    # Apply attention pooling with mask
+    pooling_layer = AttentionPooling(input_dim=feature_dim, **pooling_args)
+    x = pooling_layer(feature_input, mask=mask_input)
+
+    # Final classifier layer
+    logits = tf.keras.layers.Dense(num_classes, name="logits")(x)
+
+    # Create model with both inputs
+    return tf.keras.Model(inputs=[feature_input, mask_input], outputs=logits, name=name)
 
 class EEGNetFlatClassifierQAT(tf.keras.Model):
     def __init__(self,
                  eegnet_args,
-                 pooling_args=None,
-                 num_classes=4):  # Only valid class combinations
+                 pooling_args,
+                 num_classes=4):
         """
         EEGNet-based classifier using a single softmax over 4 valid classes.
 
@@ -138,14 +161,21 @@ class EEGNetFlatClassifierQAT(tf.keras.Model):
             num_classes (int): number of valid hierarchical class combinations
         """
         super().__init__()
-        self.eegnet = get_eegnet_qat(eegargs=eegnet_args)
         pooling_args = pooling_args or {}
 
-        dummy_input = tf.zeros([1, eegnet_args['num_channels'], eegnet_args['num_samples'], 1])  # [B, C, T, 1] for EEGNet
-        feature_dim = self.eegnet(dummy_input).shape[-1]
+        # Instantiate and store quantized feature extractor
+        self.feature_extractor = get_eegnet_qat(eegargs=eegnet_args)
 
-        self.pool = AttentionPooling(input_dim=feature_dim, **pooling_args)
-        self.classifier = tf.keras.layers.Dense(num_classes)  # No activation
+        # Probe feature dim by running dummy input
+        dummy_input = tf.zeros([1, eegnet_args['num_channels'], eegnet_args['num_samples'], 1])
+        feature_dim = self.feature_extractor(dummy_input).shape[-1]
+
+        # Define attention pooling + classifier head as a functional model
+        self.attention_classifier = get_attention_classifier(
+            feature_dim=feature_dim,
+            pooling_args=pooling_args,
+            num_classes=num_classes
+        )
 
     def call(self, x, attention_mask=None, return_attn_weights=False, return_features=False, training=False):
         """
@@ -159,20 +189,30 @@ class EEGNetFlatClassifierQAT(tf.keras.Model):
             dict with logits and optional weights/features
         """
         B, E, C, T = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], tf.shape(x)[3]
-        x = tf.reshape(x, [B * E, C, T, 1]) # matches the channel-last format expected by EEGNet
-        epoch_features = self.eegnet(x, training=training)
-        D = tf.shape(epoch_features)[-1]
-        epoch_features = tf.reshape(epoch_features, [B, E, D])
+        x = tf.reshape(x, [B * E, C, T, 1])  # [B*E, C, T, 1]
 
-        pooled, attn_weights = self.pool(epoch_features, mask=attention_mask, return_weights=True)
-        logits = self.classifier(pooled)
+        # Pass reshaped input into feature extractor
+        features = self.feature_extractor(x, training=training)  # [B*E, D]
+
+        # Reshape the feature extractor output
+        D = tf.shape(features)[-1]
+        features = tf.reshape(features, [B, E, D])  # [B, E, D]
+
+        # Forward pass through attention-classifier head
+        if attention_mask is None:
+            B = tf.shape(features)[0]
+            E = tf.shape(features)[1]
+            attention_mask = tf.ones([B, E], dtype=tf.bool)
+
+        logits = self.attention_classifier([features, attention_mask], training=training)
+
 
         out = {"logits": logits}
         if return_attn_weights:
-            out["attention_weights"] = attn_weights
+            weights = self.attention_classifier.get_layer("attention_pooling").last_attention_weights
+            out["attention_weights"] = weights
         if return_features:
-            out["features"] = pooled
-
+            out["features"] = features  # or pooled, if needed
         return out
 
 

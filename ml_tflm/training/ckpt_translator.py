@@ -60,10 +60,19 @@ def main(cfg: DictConfig):
     else:
         raise FileNotFoundError(f"No checkpoint found in {cfg.training.ckpt_load_dir}")
 
-    # --- Save model in .h5 format (for further conversion/export) ---
-    output_path = "ml_tflm/model_conversion_factory/model_FULL"
-    model.save(output_path)
-    print(f"Model saved to {output_path}")
+    # --- Save separated model components as .keras files ---
+    output_dir = "ml_tflm/model_conversion_factory/model_SPLIT"
+
+    # Feature extractor (for embedded/edge use)
+    feature_path = os.path.join(output_dir, "model_FEATURE_EXTRACTOR.keras")
+    model.feature_extractor.save(feature_path)
+    print(f"Feature extractor saved to {feature_path}")
+
+    # Classifier head (for mobile/host processing)
+    classifier_path = os.path.join(output_dir, "model_CLASSIFIER_HEAD.keras")
+    model.attention_classifier.save(classifier_path)
+    print(f"Classifier head saved to {classifier_path}")
+
 
 if __name__ == "__main__":
     main()
