@@ -214,6 +214,7 @@ events.out.tfevents.*
 
 # Ignore the large h5 files used for testing
 ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h5
+ml_tflm/dataset/agenda_data_01
 
 # Ignore the backup files created by Draw.io
 ml_tflm/.$tflm_implementation.drawio.bkp

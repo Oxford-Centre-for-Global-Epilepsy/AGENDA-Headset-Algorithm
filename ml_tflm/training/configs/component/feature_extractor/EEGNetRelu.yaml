@@ -1,6 +1,6 @@
 F1: 8
 D: 2
 F2: 16
-dropout_rate: 0.25
+dropout_rate: 0.5
 kernel_length: 64
 activation: relu  # resolve in Python

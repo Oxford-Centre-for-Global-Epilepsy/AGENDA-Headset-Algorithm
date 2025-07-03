@@ -1,0 +1,48 @@
+architecture:
+  model:
+    _target_: ml_tflm.models_tf.classifiers.EEGNetFlatClassifier
+    num_classes: 4
+    eegnet_args: ${component.feature_extractor}
+    pooling_args: ${component.pooling_layer}
+  loss:
+    _target_: ml_tflm.training.loss.StructureAwareLoss
+    clip_value: 5.0
+    temperature: 0.25
+  evaluator:
+    _target_: ml_tflm.training.metrics.metric_evaluator
+    label_config: null
+    prediction_caster: cast_prediction_flat
+  model_input_lookup:
+    x: data
+    attention_mask: attention_mask
+  model_target_lookup:
+    targets: internal_label
+dataset:
+  h5_path: ml_tflm/dataset/agenda_data_01/combined_south_africa_monopolar_standard_10_20.h5
+  name: combined_south_africa_monopolar_standard_10_20
+optimizer:
+  _target_: tensorflow.keras.optimizers.Adam
+  learning_rate: 0.0005
+training:
+  val_frac: 0.2
+  test_frac: 0.0
+  k_fold: false
+  epochs: 5
+  steps_per_epoch: 2400
+  save_ckpt: true
+  ckpt_interval: 5
+  ckpt_save_dir: ml_tflm/training/checkpoints
+  load_ckpt: false
+  ckpt_load_dir: ml_tflm/training/checkpoints
+  metric_save_dir: ml_tflm/training/results/train_metrics.json
+component:
+  feature_extractor:
+    F1: 8
+    D: 2
+    F2: 16
+    dropout_rate: 0.5
+    kernel_length: 64
+    activation: elu
+  pooling_layer:
+    hidden_dim: 128
+    activation: tanh

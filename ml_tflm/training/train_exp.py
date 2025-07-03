@@ -29,8 +29,12 @@ def to_serializable(obj):
 
 @hydra.main(config_path="configs", config_name="config", version_base="1.1")
 def main(cfg: DictConfig):
+    print("--- Training Starting ---")
+
     # --- Load label config ---
     label_config = utils.load_label_config("ml_tflm/training/label_map.JSON")
+
+    print(" -> Label Map Loaded")
 
     # --- Load dataset ---
     train_val_sets, test_dataset = utils.load_eeg_datasets_split(
@@ -41,6 +45,8 @@ def main(cfg: DictConfig):
         test_frac=cfg.training.test_frac,
         k_fold=cfg.training.k_fold
     )
+    print(" -> Dataset Loaded")
+
 
     # --- Define metric holder ---
     train_metrics = []
@@ -50,8 +56,13 @@ def main(cfg: DictConfig):
         val_dataset = train_val_set[1]
 
         # --- Prepare class histogram and loss ---
-        class_hist = utils.compute_label_histogram(train_dataset, label_config)
+
+        # class_hist = utils.compute_label_histogram(train_dataset, label_config)
+
+        class_hist = None
         loss_fn = instantiate(cfg.architecture.loss, label_config=label_config, class_histogram=class_hist)
+
+        print(" -> Dataset Counting Done")
 
         # --- Get EEGNet shape info ---
         data_spec = train_dataset.element_spec["data"]
@@ -70,6 +81,9 @@ def main(cfg: DictConfig):
 
         # --- Optimizer ---
         optimizer = instantiate(cfg.optimizer)
+
+        # --- Dataset Reconfig
+        train_dataset = train_dataset.shuffle(buffer_size=32).repeat()
         
         # --- Evaluator ---
         evaluator = instantiate(
@@ -93,6 +107,9 @@ def main(cfg: DictConfig):
             load_ckpt=cfg.training.load_ckpt,
             ckpt_load_dir=cfg.training.ckpt_load_dir
         )
+
+        print(" -> Training Time!")
+
 
         # --- Train ---
         trainer.train_loop(
