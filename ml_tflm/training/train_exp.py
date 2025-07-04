@@ -1,9 +1,15 @@
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["TF_ENABLE_LAYOUT_OPTIMIZER"] = "0"
 
 import hydra
 from omegaconf import DictConfig
 import tensorflow as tf
+
+tf.config.optimizer.set_experimental_options({
+    'layout_optimizer': False
+})
+
 from ml_tflm.training.trainer import Trainer
 import ml_tflm.training.train_utils as utils
 from hydra.utils import instantiate
@@ -82,9 +88,6 @@ def main(cfg: DictConfig):
         # --- Optimizer ---
         optimizer = instantiate(cfg.optimizer)
 
-        # --- Dataset Reconfig
-        train_dataset = train_dataset.shuffle(buffer_size=32).repeat()
-        
         # --- Evaluator ---
         evaluator = instantiate(
             cfg.architecture.evaluator,

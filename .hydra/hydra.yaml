@@ -129,18 +129,18 @@ hydra:
   runtime:
     version: 1.3.2
     version_base: '1.1'
-    cwd: D:\intern2025\AGENDA-Headset-Algorithm
+    cwd: /home/anyu/projects/agenda/AGENDA-Headset-Algorithm
     config_sources:
     - path: hydra.conf
       schema: pkg
       provider: hydra
-    - path: D:\intern2025\AGENDA-Headset-Algorithm\ml_tflm\training\configs
+    - path: /home/anyu/projects/agenda/AGENDA-Headset-Algorithm/ml_tflm/training/configs
       schema: file
       provider: main
     - path: ''
       schema: structured
       provider: schema
-    output_dir: D:\intern2025\AGENDA-Headset-Algorithm
+    output_dir: /home/anyu/projects/agenda/AGENDA-Headset-Algorithm
     choices:
       component/pooling_layer: attention_pooling
       component/feature_extractor: EEGNet

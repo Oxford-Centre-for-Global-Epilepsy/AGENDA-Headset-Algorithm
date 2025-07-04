@@ -2,8 +2,8 @@ val_frac: 0.2
 test_frac: 0.0
 k_fold: False
 
-epochs: 5
-steps_per_epoch: 2400
+epochs: 40
+steps_per_epoch: 240
 
 save_ckpt: True
 ckpt_interval: 5

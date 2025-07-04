@@ -1,6 +1,6 @@
-F1: 8
+F1: 4
 D: 2
-F2: 16
+F2: 8
 dropout_rate: 0.5
 kernel_length: 64
 activation: elu  # resolve in Python

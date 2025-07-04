@@ -24,7 +24,7 @@ class EEGNetHierarchicalClassifier(Model):
 
         # Infer feature dimension using dummy input
         dummy_input = tf.zeros([1, eegnet_args['num_channels'], eegnet_args['num_samples'], 1])  # [B, C, T, 1] for EEGNet
-        feature_dim = self.eegnet(dummy_input).shape[-1]
+        feature_dim = self.eegnet(dummy_input, training=False).shape[-1]
 
         self.pool = AttentionPooling(input_dim=feature_dim, **pooling_args)
 
@@ -83,8 +83,8 @@ class EEGNetFlatClassifier(Model):
         pooling_args = pooling_args or {}
 
         dummy_input = tf.zeros([1, eegnet_args['num_channels'], eegnet_args['num_samples'], 1])  # [B, C, T, 1] for EEGNet
-        feature_dim = self.eegnet(dummy_input).shape[-1]
-
+        feature_dim = self.eegnet(dummy_input, training=False).shape[-1]
+        
         self.pool = AttentionPooling(input_dim=feature_dim, **pooling_args)
         self.classifier = layers.Dense(num_classes)  # No activation
 

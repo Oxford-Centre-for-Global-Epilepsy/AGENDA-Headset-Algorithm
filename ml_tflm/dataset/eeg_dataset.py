@@ -21,7 +21,6 @@ class EEGRecordingTFGenerator():
         # Construct an internal label map for tensor indexing
         self.label_map_internal = {key: i for i, key in enumerate(self.label_map.keys())}
 
-
         self.dataset = EEGRecordingDataset(
             h5_file_path=h5_file_path,
             dataset_name=dataset_name,

@@ -1,6 +1,7 @@
 import h5py
 import random
 from ml_tflm.dataset.eeg_dataset import EEGRecordingTFGenerator
+from ml_tflm.dataset.eeg_dataset_rewrite import EEGRecordingDatasetTF
 import numpy as np
 
 import json
@@ -111,14 +112,14 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
         return train_val_sets, test_dataset
 
 def _make_tf_dataset(subject_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle):
-    generator = EEGRecordingTFGenerator(
+    generator = EEGRecordingDatasetTF(
         h5_file_path=h5_file_path,
         dataset_name=dataset_name,
         label_config=label_config,
         omit_channels=omit_channels,
         subject_ids=subject_ids
     )
-    return generator.as_dataset(batch_size=batch_size, shuffle=shuffle)
+    return generator.get_tf_dataset(batch_size=batch_size, shuffle=shuffle)
 
 def get_model_size_tf(model):
     size_bytes = sum([tf.keras.backend.count_params(w) * w.dtype.size for w in model.weights])

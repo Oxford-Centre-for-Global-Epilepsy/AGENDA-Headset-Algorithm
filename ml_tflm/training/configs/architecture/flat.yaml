@@ -8,7 +8,7 @@ loss:
   _target_: ml_tflm.training.loss.StructureAwareLoss
 
   clip_value: 5.0
-  temperature: 0.25
+  temperature: 0.5
 
 evaluator:
   _target_: ml_tflm.training.metrics.metric_evaluator

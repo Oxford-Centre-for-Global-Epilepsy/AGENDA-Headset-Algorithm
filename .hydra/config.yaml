@@ -7,7 +7,7 @@ architecture:
   loss:
     _target_: ml_tflm.training.loss.StructureAwareLoss
     clip_value: 5.0
-    temperature: 0.25
+    temperature: 0.5
   evaluator:
     _target_: ml_tflm.training.metrics.metric_evaluator
     label_config: null
@@ -27,8 +27,8 @@ training:
   val_frac: 0.2
   test_frac: 0.0
   k_fold: false
-  epochs: 5
-  steps_per_epoch: 2400
+  epochs: 40
+  steps_per_epoch: 240
   save_ckpt: true
   ckpt_interval: 5
   ckpt_save_dir: ml_tflm/training/checkpoints
@@ -37,12 +37,12 @@ training:
   metric_save_dir: ml_tflm/training/results/train_metrics.json
 component:
   feature_extractor:
-    F1: 8
+    F1: 4
     D: 2
-    F2: 16
+    F2: 8
     dropout_rate: 0.5
     kernel_length: 64
     activation: elu
   pooling_layer:
-    hidden_dim: 128
+    hidden_dim: 16
     activation: tanh
