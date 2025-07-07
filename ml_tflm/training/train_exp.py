@@ -108,7 +108,8 @@ def main(cfg: DictConfig):
             ckpt_interval=cfg.training.ckpt_interval,
             ckpt_save_dir=cfg.training.ckpt_save_dir,
             load_ckpt=cfg.training.load_ckpt,
-            ckpt_load_dir=cfg.training.ckpt_load_dir
+            ckpt_load_dir=cfg.training.ckpt_load_dir,
+            attention_warmup_epoch=cfg.training.attention_warmup_epoch
         )
 
         print(" -> Training Time!")

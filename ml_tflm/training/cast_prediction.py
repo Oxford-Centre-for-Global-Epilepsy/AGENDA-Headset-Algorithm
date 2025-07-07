@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-def cast_prediction_flat(output_list):
+def cast_prediction_flat(output_list, return_hierarchical=False):
     """
     Casts a list of model outputs to predicted class indices.
 
@@ -11,10 +11,41 @@ def cast_prediction_flat(output_list):
         tf.Tensor: Predicted class indices (int32)
     """
     logits_batch = tf.concat([entry["logits"] for entry in output_list], axis=0)
-    return tf.argmax(logits_batch, axis=1, output_type=tf.int32)
+    flat_pred = tf.argmax(logits_batch, axis=1, output_type=tf.int32)
+
+    if not return_hierarchical:
+        return flat_pred
+
+    flat_probs = tf.nn.softmax(logits_batch, axis=1)
+
+    # Probabilities from flat classifier: [neurotypical, generalized, focal-left, focal-right]
+    p_neurotypical = flat_probs[:, 0]
+    p_generalized = flat_probs[:, 1]
+    p_focal_left = flat_probs[:, 2]
+    p_focal_right = flat_probs[:, 3]
+
+    # Normalize within each decision node
+    p_focal_total = p_focal_left + p_focal_right + 1e-8
+    p_focal_left_norm = p_focal_left / p_focal_total
+    p_focal_right_norm = p_focal_right / p_focal_total
+
+    p_epileptic_total = p_generalized + p_focal_total
+    p_generalized_norm = p_generalized / (p_epileptic_total + 1e-8)
+    p_focal_norm = p_focal_total / (p_epileptic_total + 1e-8)
+
+    p_level1_total = p_neurotypical + p_epileptic_total
+    p_neurotypical_norm = p_neurotypical / (p_level1_total + 1e-8)
+    p_epileptic_norm = p_epileptic_total / (p_level1_total + 1e-8)
+
+    # Walk the hierarchy top-down to predict each level
+    level1_pred = tf.cast(p_epileptic_norm > p_neurotypical_norm, tf.int32)
+    level2_pred = tf.cast(p_generalized_norm > p_focal_norm, tf.int32)
+    level3_pred = tf.cast(p_focal_right_norm > p_focal_left_norm, tf.int32)
+
+    return level1_pred, level2_pred, level3_pred
 
 
-def cast_prediction_hierarchical(predictions):
+def cast_prediction_hierarchical(predictions, return_hierarchical=False):
     """
     Converts hierarchical model logits into compressed 4-class flat predictions:
         0 = neurotypical
@@ -47,6 +78,9 @@ def cast_prediction_hierarchical(predictions):
     level1_pred = tf.argmax(level1_logits, axis=1, output_type=tf.int32)
     level2_pred = tf.argmax(level2_logits, axis=1, output_type=tf.int32)
     level3_pred = tf.argmax(level3_logits, axis=1, output_type=tf.int32)
+
+    if return_hierarchical:
+        return level1_pred, level2_pred, level3_pred
 
     flat_class_ids = tf.fill(tf.shape(level1_pred), -1)
 

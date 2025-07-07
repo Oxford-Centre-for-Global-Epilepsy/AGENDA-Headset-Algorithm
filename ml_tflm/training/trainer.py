@@ -6,7 +6,8 @@ class Trainer:
     def __init__(self, model, loss_fn, optimizer, evaluator,
                  train_dataset, val_dataset, model_input_lookup, model_target_lookup, test_dataset=None,
                  save_ckpt=False, ckpt_interval=1, ckpt_save_dir="./checkpoints",
-                 load_ckpt=False, ckpt_load_dir=None):
+                 load_ckpt=False, ckpt_load_dir=None,
+                 attention_warmup_epoch=None):
            
         self.model = model
         self.loss_fn = loss_fn
@@ -49,6 +50,20 @@ class Trainer:
         # Track best val loss and corresponding metrics
         self.metric_history = []
 
+        self.attention_warmup_epoch = attention_warmup_epoch
+        self.attention_toggled = False
+
+        # Force initial attention state
+        if hasattr(self.model, 'pool'):
+            if self.attention_warmup_epoch is None or self.attention_warmup_epoch <= 0:
+                self.model.pool.toggle_trainability(True)
+                self.attention_toggled = True
+                print("[Init] Attention pooling enabled from start.")
+            else:
+                self.model.pool.toggle_trainability(False)
+                print(f"[Init] Attention pooling will be enabled at epoch {self.attention_warmup_epoch}.")
+
+
     @tf.function
     def train_step(self, batch):
         model_inputs = {k: batch[v] for k, v in self.model_input_lookup.items()}
@@ -58,6 +73,7 @@ class Trainer:
         with tf.GradientTape() as tape:
             outputs = self.model(**model_inputs, training=True)
             loss = self.loss_fn(y_pred = outputs, y_true = model_targets)
+            loss += tf.add_n(self.model.losses)
             
         grads = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
@@ -76,34 +92,63 @@ class Trainer:
 
     def eval_step(self):
         all_preds, all_targets = [], []
-        for batch in self.val_dataset:
-            model_inputs = {k: batch[v] for k, v in self.model_input_lookup.items()}
+        for i, batch in enumerate(self.val_dataset):
+            try:
+                model_inputs = {k: batch[v] for k, v in self.model_input_lookup.items()}
+                y = batch["internal_label"]
 
-            y = batch["internal_label"]
+                output = self.model(**model_inputs, training=False)
+                all_preds.append(output)
+                all_targets.extend(y.numpy().tolist())
 
-            output = self.model(**model_inputs, training=False)
-            all_preds.append(output)
-            all_targets.extend(y.numpy().tolist())
+            except tf.errors.ResourceExhaustedError:
+                print(f"[Eval Step | Batch {i}] Skipping batch due to memory error.")
+                tf.keras.backend.clear_session()
+                import gc
+                gc.collect()
+                continue
 
         target_tensor = tf.convert_to_tensor(all_targets, dtype=tf.int32)
         return self.evaluator.evaluate(all_preds, target_tensor)
 
     def train_loop(self, epochs, steps_per_epoch=None, progress_bar=True):
         for epoch in range(1, epochs + 1):
-            print(f"\nEpoch {epoch} / {epochs}")
-            self.train_loss_metric.reset_state()
-            self.val_loss_metric.reset_state()
+            print(f"Trainability of Pooling Layer is {self.model.pool.get_trainability()}")
+
+            if self.attention_warmup_epoch is not None and epoch >= self.attention_warmup_epoch:
+                if not self.attention_toggled:
+                    if hasattr(self.model, 'pool'):
+                        print(f"[Epoch {epoch}] Attention pooling now enabled.")
+                        self.model.pool.toggle_trainability(True)
+                        self.attention_toggled = True
+                    else:
+                        print("Warning: attention_warmup_epoch set, but model has no 'pool' attribute.")
+                        self.attention_toggled = True  # Prevent repeated warning
 
             step_iter = enumerate(self.train_dataset.take(steps_per_epoch)) if steps_per_epoch else enumerate(self.train_dataset)
             if progress_bar:
                 from tqdm import tqdm
                 step_iter = tqdm(step_iter, total=steps_per_epoch)
 
+            # Training loop
             for step, batch in step_iter:
-                self.train_step(batch)
+                try:
+                    self.train_step(batch)
+                except tf.errors.ResourceExhaustedError:
+                    print(f"[Epoch {epoch} | Step {step}] Skipping batch due to memory exhaustion.")
+                    tf.keras.backend.clear_session()
+                    continue
 
-            for batch in self.val_dataset:
-                self.val_step(batch)
+            # Validation loop
+            for step, batch in enumerate(self.val_dataset):
+                try:
+                    self.val_step(batch)
+                except tf.errors.ResourceExhaustedError:
+                    print(f"[Epoch {epoch} | Val Step {step}] Skipping batch due to memory error.")
+                    tf.keras.backend.clear_session()
+                    import gc
+                    gc.collect()
+                    continue
 
             print(f"Train Loss = {self.train_loss_metric.result():.4f}, "
                   f"Val Loss = {self.val_loss_metric.result():.4f}")
@@ -112,6 +157,14 @@ class Trainer:
             print("Val F1: {:.4f}, Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}".format(
                 metrics["f1"], metrics["accuracy"], metrics["precision"], metrics["recall"]
             ))
+
+            # Print hierarchical metrics if available
+            for level in ["level1", "level2", "level3"]:
+                if metrics.get(f"{level}_f1") is not None:
+                    print(f"{level.upper()} - F1: {metrics[f'{level}_f1']:.4f}, "
+                        f"Acc: {metrics[f'{level}_acc']:.4f}, "
+                        f"Prec: {metrics[f'{level}_precision']:.4f}, "
+                        f"Recall: {metrics[f'{level}_recall']:.4f}")
 
             if self.ckpt_manager and (epoch % self.ckpt_interval == 0):
                 save_path = self.ckpt_manager.save()

@@ -143,11 +143,11 @@ hydra:
     output_dir: /home/anyu/projects/agenda/AGENDA-Headset-Algorithm
     choices:
       component/pooling_layer: attention_pooling
-      component/feature_extractor: EEGNet
+      component/feature_extractor: EEGNet_mod1
       training: default
       optimizer: adam
       dataset: minimal
-      architecture: flat
+      architecture: flat_mod1
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default

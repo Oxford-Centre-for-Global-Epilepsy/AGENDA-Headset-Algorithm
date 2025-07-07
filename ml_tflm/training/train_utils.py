@@ -119,7 +119,7 @@ def _make_tf_dataset(subject_ids, h5_file_path, dataset_name, label_config, omit
         omit_channels=omit_channels,
         subject_ids=subject_ids
     )
-    return generator.get_tf_dataset(batch_size=batch_size, shuffle=shuffle)
+    return generator.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
 
 def get_model_size_tf(model):
     size_bytes = sum([tf.keras.backend.count_params(w) * w.dtype.size for w in model.weights])

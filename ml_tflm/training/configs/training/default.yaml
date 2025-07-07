@@ -2,6 +2,8 @@ val_frac: 0.2
 test_frac: 0.0
 k_fold: False
 
+attention_warmup_epoch: 10
+
 epochs: 40
 steps_per_epoch: 240
 
