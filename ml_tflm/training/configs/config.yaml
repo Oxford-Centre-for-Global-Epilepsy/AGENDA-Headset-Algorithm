@@ -1,9 +1,9 @@
 defaults:
-  - architecture: flat_mod1
+  - architecture: flat
   - dataset: minimal
   - optimizer: adam
   - training: default
-  - component/feature_extractor: EEGNet_mod1
+  - component/feature_extractor: EEGNet
   - component/pooling_layer: attention_pooling
   - _self_
 

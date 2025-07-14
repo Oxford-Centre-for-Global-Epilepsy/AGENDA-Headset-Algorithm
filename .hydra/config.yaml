@@ -1,6 +1,6 @@
 architecture:
   model:
-    _target_: ml_tflm.models_tf.classifiers.EEGNetFlatClassifierMod1
+    _target_: ml_tflm.models_tf.classifiers.EEGNetFlatClassifier
     num_classes: 4
     eegnet_args: ${component.feature_extractor}
     pooling_args: ${component.pooling_layer}
@@ -22,14 +22,21 @@ dataset:
   name: combined_south_africa_monopolar_standard_10_20
 optimizer:
   _target_: tensorflow.keras.optimizers.Adam
-  learning_rate: 0.0001
+  learning_rate: 0.001
 training:
+  use_h5: true
   val_frac: 0.2
   test_frac: 0.0
   k_fold: false
-  attention_warmup_epoch: 10
-  epochs: 40
-  steps_per_epoch: 240
+  train_path: ml_tflm/dataset/agenda_data_01/train.tfrecord
+  val_path: ml_tflm/dataset/agenda_data_01/val.tfrecord
+  meta_path: ml_tflm/dataset/agenda_data_01/meta.json
+  batch_sz: 4
+  attention_warmup_epoch: 0
+  epochs: 20
+  steps_per_epoch: 75
+  anneal_interval: 0
+  anneal_coeff: 0.5
   save_ckpt: true
   ckpt_interval: 5
   ckpt_save_dir: ml_tflm/training/checkpoints
@@ -41,9 +48,9 @@ component:
     F1: 8
     D: 2
     F2: 16
-    bottleneck_dim: 16
     dropout_rate: 0.5
+    bottleneck_dim: 32
+    kernel_length: 64
     activation: elu
   pooling_layer:
-    num_heads: 1
     activation: tanh

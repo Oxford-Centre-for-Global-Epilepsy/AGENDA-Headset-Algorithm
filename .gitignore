@@ -221,3 +221,4 @@ ml_tflm/.$tflm_implementation.drawio.bkp
 
 # Ignore the checkpoints files generated
 ml_tflm/training/checkpoints
+feature_extractor_checkpoints

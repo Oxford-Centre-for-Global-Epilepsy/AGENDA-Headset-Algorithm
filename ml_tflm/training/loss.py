@@ -5,7 +5,6 @@ import csv
 class StructureAwareLoss(tf.keras.losses.Loss):
     def __init__(self, label_config, clip_value=None, temperature=1, distance_csv_path=None, class_histogram=None):
         super().__init__()
-
         # Load label configuration
         self.label_map = label_config['label_map']
         self.inverse_label_map = label_config['inverse_label_map']
@@ -13,7 +12,6 @@ class StructureAwareLoss(tf.keras.losses.Loss):
 
         # Construct an internal label map for tensor indexing
         self.label_map_internal = {key: i for i, key in enumerate(self.label_map.keys())}
-
 
         # Construct the soft class vector based on the label prior
         self.soft_class_vector = self.construct_soft_class(self.label_prior)
@@ -32,6 +30,7 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             ])
 
         # Compute the soft target vectors from input
+        self.temperature = temperature
         self.distance_matrix = self.normalize_distance_matrix(distance_matrix, temperature)
         self.soft_target_vectors = self.precompute_target_vector()
 
@@ -67,7 +66,9 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         Returns:
             tf.Tensor: scalar loss value
         """
-        y_true = tf.squeeze(y_true["targets"], axis=-1)
+        y_true = y_true["targets"]
+        if len(y_true.shape) == 2 and y_true.shape[-1] == 1:
+            y_true = tf.squeeze(y_true, axis=-1)
         y_true = tf.cast(y_true, tf.int32)
 
         logits = output["logits"]
@@ -222,6 +223,31 @@ class StructureAwareLoss(tf.keras.losses.Loss):
                 return self.soft_target_tensor[index]
             else:
                 raise ValueError(f"Label '{label}' not found in label map.")
+            
+    def anneal_temperature(self, new_temperature):
+        """
+        Lowers the temperature and recomputes the distance matrix, soft target vectors, and tensors.
+        
+        Args:
+            new_temperature (float): New temperature value (must be > 0).
+        """
+        if new_temperature <= 0:
+            raise ValueError("Temperature must be greater than 0.")
+
+        # Update and normalize new distance matrix
+        self.distance_matrix = self.normalize_distance_matrix(self.distance_matrix.numpy(), new_temperature)
+
+        # Recompute soft target vectors
+        self.soft_target_vectors = self.precompute_target_vector()
+
+        # Convert to tensor form again
+        self.tensor_conversion()
+
+        # Update the memorized temperature value
+        self.temperature = new_temperature
+
+        print(f"[Anneal] Updated temperature to {new_temperature:.4f} and recomputed target vectors.")
+
 
 def masked_cross_entropy(logits, targets, mask, class_weights=None):
     """
@@ -256,7 +282,6 @@ def masked_cross_entropy(logits, targets, mask, class_weights=None):
         lambda: tf.constant(0.0, dtype=tf.float32),
         compute_loss
     )
-
 
 class HierarchicalLoss(tf.keras.losses.Loss):
     def __init__(self, weights=(1.0, 1.0, 1.0), level1_weights=None, level2_weights=None, level3_weights=None, label_config=None, class_histogram=None):

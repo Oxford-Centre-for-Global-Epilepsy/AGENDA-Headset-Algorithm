@@ -1,11 +1,22 @@
+use_h5: True
+
 val_frac: 0.2
 test_frac: 0.0
 k_fold: False
 
-attention_warmup_epoch: 10
+train_path: "ml_tflm/dataset/agenda_data_01/train.tfrecord"
+val_path: "ml_tflm/dataset/agenda_data_01/val.tfrecord"
+meta_path: "ml_tflm/dataset/agenda_data_01/meta.json"
 
-epochs: 40
-steps_per_epoch: 240
+batch_sz: 4
+
+attention_warmup_epoch: 0
+
+epochs: 20
+steps_per_epoch: 75
+
+anneal_interval: 0
+anneal_coeff: 0.5
 
 save_ckpt: True
 ckpt_interval: 5

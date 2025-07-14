@@ -1,2 +1,1 @@
-num_heads: 1
 activation: tanh  # resolve in Python

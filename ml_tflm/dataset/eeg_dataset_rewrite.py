@@ -118,7 +118,7 @@ class EEGRecordingDatasetTF:
             ds = ds.shuffle(len(self.subject_ids))
         ds = ds.map(tf_getitem, num_parallel_calls=num_parallel_calls)
         ds = ds.batch(batch_size)
-        ds = ds.prefetch(tf.data.AUTOTUNE)
+        ds = ds.prefetch(1)
         return ds
 
     def close(self):
@@ -137,3 +137,28 @@ class EEGRecordingDatasetTF:
 
     def get_subject_ids(self):
         return self.subject_ids
+
+if __name__ == "__main__":
+    # === Example usage ===
+
+    label_config = {
+        "label_map": {"neurotypical": 0, "epileptic": 1, "focal": 2, "generalized": 3, "left": 4, "right": 5},
+        "inverse_label_map": {0: "neurotypical", 1: "epileptic", 2: "focal", 3: "generalized", 4: "left", 5: "right"},
+    }
+
+    dataset = EEGRecordingDatasetTF(
+        h5_file_path="ml_tflm/dataset/agenda_data_01/combined_south_africa_monopolar_standard_10_20.h5",
+        dataset_name="combined_south_africa_monopolar_standard_10_20",
+        label_config=label_config
+        )
+
+    tf_dataset = dataset.as_generator(batch_size=4, shuffle=False)
+
+    for batch in tf_dataset.take(1):
+        print("=== Batch Contents ===")
+        print("data:", batch["data"].shape)  # Expected: [4, max_epochs, channels, time]
+        print("attention_mask:", batch["attention_mask"].shape)  # Expected: [4, max_epochs]
+        print("internal_label:", batch["internal_label"])  # Expected: [4]
+        print("subject_id:", batch["subject_id"])  # Shape: [4]
+
+    dataset.close()

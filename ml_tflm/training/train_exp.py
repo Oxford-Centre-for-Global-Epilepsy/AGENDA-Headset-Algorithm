@@ -1,6 +1,7 @@
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["TF_ENABLE_LAYOUT_OPTIMIZER"] = "0"
+os.environ["TF_AUTOGRAPH_CACHE_DIR"] = "D:/tf_autograph"
 
 import hydra
 from omegaconf import DictConfig
@@ -12,6 +13,7 @@ tf.config.optimizer.set_experimental_options({
 
 from ml_tflm.training.trainer import Trainer
 import ml_tflm.training.train_utils as utils
+from ml_tflm.dataset.eeg_dataset_tfrecord import load_dataset_meta_or_infer, load_eeg_tfrecord_dataset
 from hydra.utils import instantiate
 
 import json
@@ -42,15 +44,24 @@ def main(cfg: DictConfig):
 
     print(" -> Label Map Loaded")
 
-    # --- Load dataset ---
-    train_val_sets, test_dataset = utils.load_eeg_datasets_split(
-        h5_file_path=cfg.dataset.h5_path,
-        dataset_name=cfg.dataset.name,
-        label_config=label_config,
-        val_frac=cfg.training.val_frac,
-        test_frac=cfg.training.test_frac,
-        k_fold=cfg.training.k_fold
-    )
+    if cfg.training.use_h5:
+        # --- Load dataset ---
+        train_val_sets, test_dataset = utils.load_eeg_datasets_split(
+            h5_file_path=cfg.dataset.h5_path,
+            dataset_name=cfg.dataset.name,
+            label_config=label_config,
+            val_frac=cfg.training.val_frac,
+            test_frac=cfg.training.test_frac,
+            k_fold=cfg.training.k_fold,
+            batch_size=cfg.training.batch_sz
+        )
+    else:
+        meta = load_dataset_meta_or_infer(cfg.training.train_path, cfg.training.meta_path)
+        train_val_sets = [[
+            load_eeg_tfrecord_dataset(cfg.training.train_path, batch_size=cfg.training.batch_sz, shuffle=True, **meta), 
+            load_eeg_tfrecord_dataset(cfg.training.val_path, batch_size=cfg.training.batch_sz, shuffle=False, **meta)
+            ],]
+        test_dataset = None
     print(" -> Dataset Loaded")
 
 
@@ -84,8 +95,8 @@ def main(cfg: DictConfig):
         pooling_args["activation"] = getattr(tf.nn, pooling_args["activation"])
 
         model = instantiate(cfg.architecture.model, eegnet_args=eegnet_args, pooling_args=pooling_args)
-
-        # --- Optimizer ---
+        
+        # Now create optimizer after variables exist
         optimizer = instantiate(cfg.optimizer)
 
         # --- Evaluator ---
@@ -109,7 +120,9 @@ def main(cfg: DictConfig):
             ckpt_save_dir=cfg.training.ckpt_save_dir,
             load_ckpt=cfg.training.load_ckpt,
             ckpt_load_dir=cfg.training.ckpt_load_dir,
-            attention_warmup_epoch=cfg.training.attention_warmup_epoch
+            attention_warmup_epoch=cfg.training.attention_warmup_epoch,
+            anneal_interval=cfg.training.anneal_interval,
+            anneal_coeff=cfg.training.anneal_coeff
         )
 
         print(" -> Training Time!")

@@ -3,63 +3,53 @@ from tensorflow.keras import layers, models
 
 class EEGNet(tf.keras.Model):
     """
-    TensorFlow EEGNet implementation for per-epoch EEG feature extraction.
-
-    Parameters
-    ----------
-    num_channels : int
-        Number of EEG channels.
-    num_samples : int
-        Number of time samples per epoch.
-    dropout_rate : float
-        Dropout rate after conv layers.
-    F1 : int
-        Number of temporal filters.
-    D : int
-        Depth multiplier (spatial filters per temporal filter).
-    F2 : int
-        Number of pointwise filters.
-    kernel_length : int
-        Length of temporal kernel.
-    activation : callable
-        Activation function (e.g., tf.nn.elu, tf.nn.relu6). Default is tf.nn.elu.
+    TensorFlow EEGNet implementation with LayerNormalization for per-epoch EEG feature extraction.
     """
+
     def __init__(self,
                  num_channels=21,
-                 num_samples=256,
+                 num_samples=128,
                  dropout_rate=0.5,
                  F1=8,
                  D=2,
                  F2=16,
                  kernel_length=64,
+                 bottleneck_dim=None,
                  activation=tf.nn.elu):
 
         super().__init__()
         self.activation = activation
+        self.bottleneck_dim = bottleneck_dim
 
-        # First temporal conv
         self.firstconv = models.Sequential([
             layers.Conv2D(F1, (1, kernel_length), padding='same', use_bias=False),
-            layers.BatchNormalization()
+            layers.LayerNormalization()
         ])
 
-        # Depthwise spatial conv
         self.depthwiseConv = models.Sequential([
             layers.DepthwiseConv2D((num_channels, 1), depth_multiplier=D, use_bias=False),
-            layers.BatchNormalization(),
+            layers.LayerNormalization(),
             layers.Activation(self.activation),
             layers.AveragePooling2D((1, 4)),
             layers.Dropout(dropout_rate)
         ])
 
-        # Separable conv
         self.separableConv = models.Sequential([
             layers.SeparableConv2D(F2, (1, 16), padding='same', use_bias=False),
-            layers.BatchNormalization(),
+            layers.LayerNormalization(),
             layers.Activation(self.activation),
             layers.AveragePooling2D((1, 8)),
             layers.Dropout(dropout_rate)
         ])
+
+        # Optional bottleneck
+        if bottleneck_dim and bottleneck_dim > 0:
+            self.bottleneck = models.Sequential([
+                layers.Dense(bottleneck_dim, activation=self.activation),
+                layers.Dropout(dropout_rate)
+            ])
+        else:
+            self.bottleneck = None
 
     def call(self, inputs, return_features=False):
         """
@@ -81,6 +71,9 @@ class EEGNet(tf.keras.Model):
         x1 = self.depthwiseConv(x)
         x2 = self.separableConv(x1)
         x_flat = tf.reshape(x2, [tf.shape(x2)[0], -1])
+
+        if self.bottleneck is not None:
+            x_flat = self.bottleneck(x_flat)
 
         if return_features:
             return {

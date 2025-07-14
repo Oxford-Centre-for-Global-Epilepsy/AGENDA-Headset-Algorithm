@@ -1,6 +1,6 @@
 F1: 8
 D: 2
 F2: 16
-bottleneck_dim: 16
+bottleneck_dim: 32
 dropout_rate: 0.5
 activation: elu  # resolve in Python
