@@ -31,10 +31,10 @@ training:
   train_path: ml_tflm/dataset/agenda_data_01/train.tfrecord
   val_path: ml_tflm/dataset/agenda_data_01/val.tfrecord
   meta_path: ml_tflm/dataset/agenda_data_01/meta.json
-  batch_sz: 4
+  batch_sz: 1
   attention_warmup_epoch: 0
   epochs: 20
-  steps_per_epoch: 75
+  steps_per_epoch: 240
   anneal_interval: 0
   anneal_coeff: 0.5
   save_ckpt: true
@@ -45,12 +45,13 @@ training:
   metric_save_dir: ml_tflm/training/results/train_metrics.json
 component:
   feature_extractor:
-    F1: 8
+    F1: 24
     D: 2
-    F2: 16
+    F2: 8
     dropout_rate: 0.5
-    bottleneck_dim: 32
+    bottleneck_dim: 0
     kernel_length: 64
     activation: elu
   pooling_layer:
+    hidden_dim: 32
     activation: tanh

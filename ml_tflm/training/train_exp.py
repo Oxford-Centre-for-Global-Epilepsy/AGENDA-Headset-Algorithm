@@ -140,8 +140,8 @@ def main(cfg: DictConfig):
     save_path = cfg.training.metric_save_dir
     Path(os.path.dirname(save_path)).mkdir(parents=True, exist_ok=True)
 
-    # Find best result (lowest validation loss)
-    best_result = min(train_metrics, key=lambda d: d["val_loss"])
+    # Find best result (highest macro F1)
+    best_result = max(train_metrics, key=lambda d: d.get("f1", -1))
 
     # Dump result in a JSON-safe way
     with open(save_path, "w") as f:

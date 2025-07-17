@@ -2,10 +2,10 @@ import tensorflow as tf
 from tensorflow.keras import regularizers, layers
 
 class AttentionPooling(tf.keras.layers.Layer):
-    def __init__(self, input_dim, activation=tf.nn.tanh):
+    def __init__(self, input_dim, hidden_dim = 64, activation=tf.nn.tanh):
         super().__init__()
         self.scorer = tf.keras.Sequential([
-            layers.Dense(64, activation=activation, kernel_initializer='glorot_uniform'),
+            layers.Dense(hidden_dim, activation=activation, kernel_initializer='glorot_uniform'),
             layers.Dense(1, kernel_initializer='glorot_uniform')
         ])
 

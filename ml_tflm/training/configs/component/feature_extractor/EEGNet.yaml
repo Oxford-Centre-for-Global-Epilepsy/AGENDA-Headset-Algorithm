@@ -1,7 +1,7 @@
-F1: 8
+F1: 24
 D: 2
-F2: 16
+F2: 8
 dropout_rate: 0.5
-bottleneck_dim: 32
+bottleneck_dim: 0
 kernel_length: 64
 activation: elu  # resolve in Python

@@ -1,0 +1,2 @@
+Best trial params: {'activation': 'elu', 'F1': 16, 'F2': 8, 'bottleneck_dim': 16, 'hidden_dim': 32}
+Best trial val_loss: -0.4933667452830189

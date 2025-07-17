@@ -81,7 +81,6 @@ class Trainer:
         except Exception as e:
             print(f"[Retrace] Failed to retrace tf.functions: {e}")
 
-
     @tf.function
     def train_step(self, batch):
         model_inputs = {k: batch[v] for k, v in self.model_input_lookup.items()}
@@ -153,9 +152,11 @@ class Trainer:
             results["attention_entropy_mean"] = float(np.mean(attention_entropies))
             results["attention_entropy_std"] = float(np.std(attention_entropies))
 
+        """
         if attention_means:
             results["attention_mean"] = np.mean(np.stack(attention_means), axis=0).tolist()
-
+        """
+            
         return results
 
     def train_loop(self, epochs, steps_per_epoch=None, progress_bar=True):
@@ -255,7 +256,7 @@ class Trainer:
         if not self.metric_history:
             return None
 
-        best_epoch = min(self.metric_history, key=lambda m: m["val_loss"])
+        best_epoch = max(self.metric_history, key=lambda m: m.get("f1", -1))
         return best_epoch
 
 def print_weight_updates(old_weights_dict, new_weights_dict):

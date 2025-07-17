@@ -1,0 +1,55 @@
+{
+  "val_loss": 0.20974016189575195,
+  "f1": 0.30517241379310345,
+  "accuracy": 0.527027027027027,
+  "precision": 0.3267857142857143,
+  "recall": 0.3653846153846154,
+  "confusion_matrix": [
+    [
+      27,
+      0,
+      0,
+      0
+    ],
+    [
+      14,
+      12,
+      0,
+      0
+    ],
+    [
+      11,
+      0,
+      0,
+      0
+    ],
+    [
+      8,
+      2,
+      0,
+      0
+    ]
+  ],
+  "level1_f1": 0.7265336289726534,
+  "level1_acc": 0.7297297297297297,
+  "level1_precision": 0.7377289377289378,
+  "level1_recall": 0.7557131599684791,
+  "level2_f1": 0.4763925729442971,
+  "level2_acc": 0.5531914893617021,
+  "level2_precision": 0.532051282051282,
+  "level2_recall": 0.5183150183150182,
+  "level3_f1": 0.34375,
+  "level3_acc": 0.5238095238095238,
+  "level3_precision": 0.2619047619047619,
+  "level3_recall": 0.5,
+  "attention_entropy_mean": 7.018773484874416,
+  "attention_entropy_std": 0.4289246586525554,
+  "trial_number": 5,
+  "params": {
+    "activation": "relu",
+    "F1": 16,
+    "F2": 12,
+    "bottleneck_dim": 24,
+    "hidden_dim": 16
+  }
+}

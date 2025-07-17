@@ -1,1 +1,2 @@
+hidden_dim: 32
 activation: tanh  # resolve in Python
