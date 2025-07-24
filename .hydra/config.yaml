@@ -1,42 +1,23 @@
-architecture:
-  model:
-    _target_: ml_tflm.models_tf.classifiers.EEGNetFlatClassifier
-    num_classes: 4
-    eegnet_args: ${component.feature_extractor}
-    pooling_args: ${component.pooling_layer}
-  loss:
-    _target_: ml_tflm.training.loss.StructureAwareLoss
-    clip_value: 5.0
-    temperature: 0.5
-  evaluator:
-    _target_: ml_tflm.training.metrics.metric_evaluator
-    label_config: null
-    prediction_caster: cast_prediction_flat
-  model_input_lookup:
-    x: data
-    attention_mask: attention_mask
-  model_target_lookup:
-    targets: internal_label
 dataset:
   h5_path: ml_tflm/dataset/agenda_data_01/combined_south_africa_monopolar_standard_10_20.h5
   name: combined_south_africa_monopolar_standard_10_20
+  ablation:
+  - A1
+  - A2
 optimizer:
   _target_: tensorflow.keras.optimizers.Adam
   learning_rate: 0.001
 training:
-  use_h5: true
   val_frac: 0.2
   test_frac: 0.0
   k_fold: false
-  train_path: ml_tflm/dataset/agenda_data_01/train.tfrecord
-  val_path: ml_tflm/dataset/agenda_data_01/val.tfrecord
-  meta_path: ml_tflm/dataset/agenda_data_01/meta.json
+  mirror_flag: false
   batch_sz: 1
-  attention_warmup_epoch: 0
   epochs: 20
   steps_per_epoch: 240
+  attention_warmup_epoch: 0
   anneal_interval: 0
-  anneal_coeff: 0.5
+  anneal_coeff: 0.4
   save_ckpt: true
   ckpt_interval: 5
   ckpt_save_dir: ml_tflm/training/checkpoints
@@ -45,13 +26,45 @@ training:
   metric_save_dir: ml_tflm/training/results/train_metrics.json
 component:
   feature_extractor:
-    F1: 24
-    D: 2
-    F2: 8
-    dropout_rate: 0.5
-    bottleneck_dim: 0
-    kernel_length: 64
-    activation: elu
+    eegnet:
+      F1: 16
+      D: 2
+      F2: 4
+      dropout_rate: 0.5
+      bottleneck_dim: 0
+      kernel_length: 64
+      temporal_type: vanilla
+      activation: elu
+    model_input_lookup:
+      x: data
+      attention_mask: attention_mask
   pooling_layer:
-    hidden_dim: 32
-    activation: tanh
+    pool:
+      hidden_dim: 16
+      activation: tanh
+      num_heads: 2
+    loss:
+      _target_: ml_tflm.training.loss.ConditionalEntropyLoss
+      label_to_heads:
+        3:
+        - 0
+        4:
+        - 0
+        5:
+        - 0
+      lambda_entropy: 0.01
+  classifier_head:
+    head:
+      type: flat
+    loss:
+      _target_: ml_tflm.training.loss.StructureAwareLoss
+      clip_value: 10.0
+      temperature: 0.1
+      dist_1_2: 0.4
+      dist_2_2: 0.2
+    evaluator:
+      _target_: ml_tflm.training.metrics.metric_evaluator
+      label_config: null
+      prediction_caster: cast_prediction_flat
+    model_target_lookup:
+      targets: internal_label

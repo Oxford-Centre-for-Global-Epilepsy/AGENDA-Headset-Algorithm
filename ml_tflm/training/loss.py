@@ -3,7 +3,7 @@ import numpy as np
 import csv
 
 class StructureAwareLoss(tf.keras.losses.Loss):
-    def __init__(self, label_config, clip_value=None, temperature=1, distance_csv_path=None, class_histogram=None):
+    def __init__(self, label_config, clip_value=None, temperature=1, distance_csv_path=None, class_histogram=None, dist_2_2=None, dist_1_2=None):
         super().__init__()
         # Load label configuration
         self.label_map = label_config['label_map']
@@ -21,6 +21,13 @@ class StructureAwareLoss(tf.keras.losses.Loss):
             with open(distance_csv_path, 'r') as f:
                 reader = csv.reader(f)
                 distance_matrix = np.array([[float(x) for x in row] for row in reader])
+        elif dist_1_2 and dist_2_2:
+            distance_matrix = np.array([
+                [0.0, 1.0, 1.0, 1.0],
+                [1.0, 0.0, dist_1_2, dist_1_2],
+                [1.0, dist_1_2, 0.0, dist_2_2],
+                [1.0, dist_1_2, dist_2_2, 0.0],
+            ])
         else:
             distance_matrix = np.array([
                 [0.0, 3.0, 3.0, 3.0],
@@ -248,7 +255,6 @@ class StructureAwareLoss(tf.keras.losses.Loss):
 
         print(f"[Anneal] Updated temperature to {new_temperature:.4f} and recomputed target vectors.")
 
-
 def masked_cross_entropy(logits, targets, mask, class_weights=None):
     """
     Computes masked cross-entropy loss for binary/multiclass classification.
@@ -335,7 +341,80 @@ class HierarchicalLoss(tf.keras.losses.Loss):
 
         return self.weights[0] * loss1 + self.weights[1] * loss2 + self.weights[2] * loss3
 
+class ConditionalEntropyLoss(tf.keras.losses.Loss):
+    def __init__(self, label_to_heads = None, lambda_entropy=1.0, eps=1e-6, name="conditional_entropy_loss"):
+        """
+        Keras-compatible loss that applies attention entropy penalty only
+        to specific heads, based on sample label.
+
+        Args:
+            lambda_entropy: scalar weight for the entropy term
+            eps: small constant to prevent log(0)
+        """
+        super().__init__(name=name)
+        self.lambda_entropy = lambda_entropy
+        self.eps = eps
+
+        # Your internal label → head mapping
+        # 3: generalized → head 0
+        # 4, 5: focal left/right → head 1
+        self.label_to_heads = label_to_heads
+
+        # Compute label-to-head mask matrix [num_labels, num_heads]
+        self.num_heads = 2
+        max_label = max(self.label_to_heads.keys()) + 1
+        label_mask_matrix = []
+        for label in range(max_label):
+            active_heads = self.label_to_heads.get(label, [])
+            row = [1.0 if h in active_heads else 0.0 for h in range(self.num_heads)]
+            label_mask_matrix.append(row)
+        self.label_mask = tf.constant(label_mask_matrix, dtype=tf.float32)  # shape [L, H]
+
+    def call(self, y_true, attention_weights):
+        """
+        Args:
+            y_true: Tensor of shape [B] or [B, 1], int class labels
+            attention_weights: Tensor of shape:
+                [B, T]   → single-head attention
+                [B, H, T] → multi-head attention
+        Returns:
+            Scalar entropy penalty (float32)
+        """
+        y_true = tf.cast(tf.squeeze(y_true), tf.int32)  # [B]
+
+        shape = attention_weights.shape
+
+        if len(shape) == 2:  # [B, T]
+            attention_weights = tf.expand_dims(attention_weights, axis=1)  # [B, 1, T]
+            label_mask = tf.gather(self.label_mask[:, :1], y_true)         # [B, 1]
+        elif len(shape) == 3:  # [B, H, T]
+            label_mask = tf.gather(self.label_mask, y_true)                # [B, H]
+        else:
+            raise ValueError(f"Expected attention_weights rank 2 or 3, but got shape {shape}")
+
+
+        # Compute entropy per head
+        entropy = -tf.reduce_sum(attention_weights * tf.math.log(attention_weights + self.eps), axis=-1)  # [B, H]
+
+        # Apply mask
+        masked_entropy = entropy * label_mask  # [B, H]
+        num_active_heads = tf.reduce_sum(label_mask, axis=-1)  # [B]
+        per_sample_entropy = tf.reduce_sum(masked_entropy, axis=-1) / (num_active_heads + self.eps)  # [B]
+
+        """
+        tf.print("y_true:", y_true)
+        tf.print("label_mask:", label_mask)
+        tf.print("entropy:", entropy)
+        tf.print("masked_entropy:", masked_entropy)
+        tf.print("num_active_heads:", num_active_heads)
+        tf.print("per_sample_entropy:", per_sample_entropy)
+        """
+        
+        # Return batch mean
+        return self.lambda_entropy * tf.reduce_sum(per_sample_entropy)
+
 if __name__ == "__main__":
+    """
     # Dummy label config
     label_config = {
         "label_map": {
@@ -382,3 +461,17 @@ if __name__ == "__main__":
         print(loss_fn.get_soft_class_vector(label))
         print("Target vector:")
         print(loss_fn.get_target_vector(label))
+    """
+
+    loss = ConditionalEntropyLoss(label_to_heads={3: [0], 4: [1], 5: [1]})
+
+    # Example 1: multi-head input with focal (label 4 → head 1)
+    y_true = tf.constant([4, 3, 0])  # focal, generalized, neurotypical
+    attn = tf.constant([
+        [[0.1, 0.9], [0.5, 0.5]],   # head 0, head 1
+        [[0.8, 0.2], [0.6, 0.4]],
+        [[0.5, 0.5], [0.5, 0.5]]
+    ], dtype=tf.float32)  # shape [3, 2, 2]
+
+    print("Loss:", loss(y_true, attn).numpy())
+

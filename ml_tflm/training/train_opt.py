@@ -21,19 +21,20 @@ def objective(trial):
     metric_path = os.path.join(RESULTS_DIR, f"{trial_id}.json")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
+    print(f"\n=== Trial {trial.number} starting ===")
+
     with initialize(config_path="configs", version_base="1.1"):
         overrides = [
-            f"component.feature_extractor.F1={trial.suggest_categorical('F1', [16, 32, 64])}",
-            f"component.feature_extractor.F2={trial.suggest_categorical('F2', [4, 8, 12, 16])}",
-            f"component.pooling_layer.hidden_dim={trial.suggest_categorical('hidden_dim', [16, 32, 64])}",
+            f"component/pooling_layer={trial.suggest_categorical('pooling_layer', ['SingleAttentionPooling', 'DualAttentionPooling'])}",
+            f"dataset.ablation={trial.suggest_categorical('ablation', [None, ['A1','A2'], ['T3','T4']])}",
             "training.epochs=20",
             "training.save_ckpt=false",
             "training.k_fold=false",
             f"training.metric_save_dir={metric_path.replace(os.sep, '/')}"
         ]
+        print(f"Investing Overides:{overrides}")
         cfg = compose(config_name="config", overrides=overrides)
 
-    print(f"\n=== Trial {trial.number} starting ===")
     print_memory_usage()
 
     try:
@@ -72,7 +73,7 @@ def objective(trial):
 
 if __name__ == "__main__":
     study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=20)
+    study.optimize(objective, n_trials=40)
 
     print("Best trial params:", study.best_trial.params)
     print("Best trial val_loss:", study.best_value)

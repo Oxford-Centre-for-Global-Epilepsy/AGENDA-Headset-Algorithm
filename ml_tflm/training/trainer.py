@@ -1,10 +1,14 @@
 import tensorflow as tf
 import tensorflow_model_optimization as tfmot
-from ml_tflm.training.train_utils import get_checkpoint_manager, maybe_restore_checkpoint
+from ml_tflm.training.train_utils import get_checkpoint_manager, maybe_restore_checkpoint, print_confusion_matrix
+from ml_tflm.training.loss import ConditionalEntropyLoss
 import numpy as np
 
+from tqdm import tqdm
+
+
 class Trainer:
-    def __init__(self, model, loss_fn, optimizer, evaluator,
+    def __init__(self, model, loss_fn, attention_loss, optimizer, evaluator,
                  train_dataset, val_dataset, model_input_lookup, model_target_lookup, test_dataset=None,
                  save_ckpt=False, ckpt_interval=1, ckpt_save_dir="./checkpoints",
                  load_ckpt=False, ckpt_load_dir=None,
@@ -13,6 +17,7 @@ class Trainer:
 
         self.model = model
         self.loss_fn = loss_fn
+        self.attention_loss = attention_loss
         self.optimizer = optimizer
         self.evaluator = evaluator
         self.train_dataset = train_dataset
@@ -92,72 +97,91 @@ class Trainer:
             loss += tf.add_n(self.model.losses)
 
             # === Add attention entropy regularization if applicable ===
-            if "attention_weights" in outputs:
-                attn = outputs["attention_weights"]  # shape: [B, E]
-                entropy = -tf.reduce_sum(attn * tf.math.log(attn + 1e-8), axis=-1)  # shape: [B]
-                mean_entropy = tf.reduce_mean(entropy)  # scalar
-                loss += 0.005 * mean_entropy  # weight is tunable
+            if "attention_weights" in outputs and self.attention_loss is not None:
+                entropy_penalty = self.attention_loss(y_true=model_targets["targets"], y_pred=outputs["attention_weights"])
+                loss += entropy_penalty
 
         grads = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
         self.train_loss_metric.update_state(loss)
 
-    @tf.function
-    def val_step(self, batch):
-        model_inputs = {k: batch[v] for k, v in self.model_input_lookup.items()}
-        model_targets = {k: batch[v] for k, v in self.model_target_lookup.items()}
-
-        outputs = self.model(**model_inputs, use_attention=self.enable_attention, return_attn_weights=True, training=False)
-        loss = self.loss_fn(y_pred=outputs, y_true=model_targets)
-        self.val_loss_metric.update_state(loss)
-
-    def eval_step(self):
+    def run_validation(self, collect_outputs=True, verbose=False):
         all_preds, all_targets = [], []
-        attention_entropies = []
-        attention_means = []
+        attention_entropies, attention_means = [], []
 
-        for i, batch in enumerate(self.val_dataset):
+        val_iter = enumerate(self.val_dataset)
+        if verbose:
+            val_iter = tqdm(val_iter, desc="Validation")
+
+        attention_entropies = None  # Will be [H][N] in multi-head; [1][N] in single-head
+
+        for step, batch in val_iter:
             try:
                 model_inputs = {k: batch[v] for k, v in self.model_input_lookup.items()}
-                y = batch["internal_label"]
+                model_targets = {k: batch[v] for k, v in self.model_target_lookup.items()}
+                y = batch.get("internal_label")
 
-                outputs = self.model(**model_inputs,
-                                    use_attention=self.enable_attention,
-                                    training=False,
-                                    return_attn_weights=True,
-                                    return_features=True)
+                outputs = self.model(
+                    **model_inputs,
+                    use_attention=self.enable_attention,
+                    training=False,
+                    return_attn_weights=True,
+                    return_features=collect_outputs,
+                )
 
-                all_preds.append(outputs)
-                all_targets.extend(y.numpy().tolist())
+                loss = self.loss_fn(y_pred=outputs, y_true=model_targets)
+                self.val_loss_metric.update_state(loss)
 
-                if "attention_weights" in outputs:
-                    attention = outputs["attention_weights"]  # [B, E]
-                    entropy = -tf.reduce_sum(attention * tf.math.log(attention + 1e-6), axis=-1)  # [B]
-                    attention_entropies.extend(entropy.numpy().tolist())
-                    attention_means.append(tf.reduce_mean(attention, axis=0).numpy())  # [E]
+                if collect_outputs:
+                    all_preds.append(outputs)
+                    all_targets.extend(y.numpy().tolist())
+
+                    if "attention_weights" in outputs:
+                        attention = outputs["attention_weights"]  # [B, T] or [B, H, T]
+
+                        if len(attention.shape) == 2:  # Single-head: [B, T]
+                            entropy = -tf.reduce_sum(attention * tf.math.log(attention + 1e-6), axis=-1)  # [B]
+                            entropy_np = entropy.numpy()
+
+                            if attention_entropies is None:
+                                attention_entropies = [[]]  # one list for the single head
+                            attention_entropies[0].extend(entropy_np.tolist())
+
+                        elif len(attention.shape) == 3:  # Multi-head: [B, H, T]
+                            entropy = -tf.reduce_sum(attention * tf.math.log(attention + 1e-6), axis=-1)  # [B, H]
+                            entropy_np = entropy.numpy()  # [B, H]
+
+                            H = entropy_np.shape[1]
+                            if attention_entropies is None:
+                                attention_entropies = [[] for _ in range(H)]
+
+                            for h in range(H):
+                                attention_entropies[h].extend(entropy_np[:, h].tolist())
+
+                        else:
+                            raise ValueError(f"Unsupported attention weight shape: {attention.shape}")
 
             except tf.errors.ResourceExhaustedError:
-                print(f"[Eval Step | Batch {i}] Skipping batch due to memory error.")
+                print(f"[Validation | Step {step}] Skipping batch due to memory error.")
                 tf.keras.backend.clear_session()
                 import gc
                 gc.collect()
                 continue
 
-        # Aggregate predictions and evaluate
-        target_tensor = tf.convert_to_tensor(all_targets, dtype=tf.int32)
-        results = self.evaluator.evaluate(all_preds, target_tensor)
+        if collect_outputs:
+            results = self.evaluator.evaluate(
+                all_preds,
+                tf.convert_to_tensor(all_targets)
+            )
 
-        # Add attention stats
-        if attention_entropies:
-            results["attention_entropy_mean"] = float(np.mean(attention_entropies))
-            results["attention_entropy_std"] = float(np.std(attention_entropies))
+            if attention_entropies:
+                results["attention_entropy_mean"] = [float(np.mean(h)) for h in attention_entropies]
+                results["attention_entropy_std"] = [float(np.std(h)) for h in attention_entropies]
 
-        """
-        if attention_means:
-            results["attention_mean"] = np.mean(np.stack(attention_means), axis=0).tolist()
-        """
-            
-        return results
+            return results
+        else:
+            return {}
+
 
     def train_loop(self, epochs, steps_per_epoch=None, progress_bar=True):
         for epoch in range(1, epochs + 1):
@@ -189,47 +213,36 @@ class Trainer:
                     continue
 
 
-            val_iter = tqdm(enumerate(self.val_dataset), desc="Validation")
-            for step, batch in val_iter:
-                try:
-                    self.val_step(batch)
-                except tf.errors.ResourceExhaustedError:
-                    print(f"[Epoch {epoch} | Val Step {step}] Skipping batch due to memory error.")
-                    tf.keras.backend.clear_session()
-                    import gc
-                    gc.collect()
-                    continue
+            metrics = self.run_validation(collect_outputs=True, verbose=True)
 
             print(f"Train Loss = {self.train_loss_metric.result():.4f}, "
-                  f"Val Loss = {self.val_loss_metric.result():.4f}")
+                f"Val Loss = {self.val_loss_metric.result():.4f}")
 
-            metrics = self.eval_step()
             print("Val F1: {:.4f}, Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}".format(
                 metrics["f1"], metrics["accuracy"], metrics["precision"], metrics["recall"]
             ))
 
-            for level in ["level1", "level2", "level3"]:
-                if metrics.get(f"{level}_f1") is not None:
-                    print(f"{level.upper()} - F1: {metrics[f'{level}_f1']:.4f}, "
-                          f"Acc: {metrics[f'{level}_acc']:.4f}, "
-                          f"Prec: {metrics[f'{level}_precision']:.4f}, "
-                          f"Recall: {metrics[f'{level}_recall']:.4f}")
+            # Confusion matrix
+            if "confusion_matrix" in metrics:
+                print("\nConfusion Matrix:")
+                class_labels = ["neurotypical", "generalized", "left", "right"]
+                print_confusion_matrix(metrics["confusion_matrix"], class_labels)
 
-            # Print entropy stats if available
+            # Attention stats
             if "attention_entropy_mean" in metrics:
-                print("Attention Entropy — Mean: {:.4f}, Std: {:.4f}".format(
-                    metrics["attention_entropy_mean"], metrics["attention_entropy_std"]
-                ))
+                means = metrics["attention_entropy_mean"]
+                stds = metrics.get("attention_entropy_std", None)
 
-            # Optionally print mean attention vector (e.g., mean importance per epoch index)
-            if "attention_mean" in metrics:
-                mean_attn = np.array(metrics["attention_mean"])
-                print("Mean Attention Weights (across eval set):", np.round(mean_attn, 3))
-
+                for i, mean in enumerate(means):
+                    std = stds[i] if stds and i < len(stds) else 0.0
+                    print(f"Attention Head {i} — Entropy Mean: {mean:.4f}, Std: {std:.4f}")
+                
+            # Save checkpoint
             if self.ckpt_manager and (epoch % self.ckpt_interval == 0):
                 save_path = self.ckpt_manager.save()
                 print(f"Checkpoint saved at {save_path}")
 
+            # Log metrics
             self.metric_history.append({
                 "val_loss": self.val_loss_metric.result().numpy(),
                 **metrics
@@ -247,7 +260,6 @@ class Trainer:
             if self.anneal_interval:
                 if epoch%self.anneal_interval == 0:
                     self.loss_fn.anneal_temperature(self.loss_fn.temperature * self.anneal_coeff)
-
 
     def get_metrics(self, mode="best"):
         if mode == "all":

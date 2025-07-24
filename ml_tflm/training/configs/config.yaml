@@ -1,10 +1,10 @@
 defaults:
-  - architecture: flat
-  - dataset: minimal
+  - dataset: sample01
   - optimizer: adam
   - training: default
   - component/feature_extractor: EEGNet
-  - component/pooling_layer: attention_pooling
+  - component/pooling_layer: SingleAttentionPooling
+  - component/classifier_head: Flat
   - _self_
 
 hydra:

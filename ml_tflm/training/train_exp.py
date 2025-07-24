@@ -13,8 +13,11 @@ tf.config.optimizer.set_experimental_options({
 
 from ml_tflm.training.trainer import Trainer
 import ml_tflm.training.train_utils as utils
+
 from ml_tflm.dataset.eeg_dataset_tfrecord import load_dataset_meta_or_infer, load_eeg_tfrecord_dataset
 from hydra.utils import instantiate
+
+from ml_tflm.models_tf.eegnet_stack import EEGNetStack
 
 import json
 from pathlib import Path
@@ -44,64 +47,64 @@ def main(cfg: DictConfig):
 
     print(" -> Label Map Loaded")
 
-    if cfg.training.use_h5:
-        # --- Load dataset ---
-        train_val_sets, test_dataset = utils.load_eeg_datasets_split(
-            h5_file_path=cfg.dataset.h5_path,
-            dataset_name=cfg.dataset.name,
-            label_config=label_config,
-            val_frac=cfg.training.val_frac,
-            test_frac=cfg.training.test_frac,
-            k_fold=cfg.training.k_fold,
-            batch_size=cfg.training.batch_sz
-        )
-    else:
-        meta = load_dataset_meta_or_infer(cfg.training.train_path, cfg.training.meta_path)
-        train_val_sets = [[
-            load_eeg_tfrecord_dataset(cfg.training.train_path, batch_size=cfg.training.batch_sz, shuffle=True, **meta), 
-            load_eeg_tfrecord_dataset(cfg.training.val_path, batch_size=cfg.training.batch_sz, shuffle=False, **meta)
-            ],]
-        test_dataset = None
+    # --- Load dataset ---
+    train_val_sets, test_dataset, label_histograms = utils.load_eeg_datasets_split(
+        h5_file_path=cfg.dataset.h5_path,
+        dataset_name=cfg.dataset.name,
+        label_config=label_config,
+        omit_channels=cfg.dataset.ablation,
+        val_frac=cfg.training.val_frac,
+        test_frac=cfg.training.test_frac,
+        k_fold=cfg.training.k_fold,
+        batch_size=cfg.training.batch_sz,
+        mirror_flag=cfg.training.mirror_flag,
+    )
+    
     print(" -> Dataset Loaded")
-
+    print("     -> Loaded Dataset Contains:")
+    print(label_histograms)
 
     # --- Define metric holder ---
     train_metrics = []
 
-    for train_val_set in train_val_sets:
+    for fold_idx in range(len(train_val_sets)):
+        train_val_set = train_val_sets[fold_idx]
         train_dataset = train_val_set[0]
         val_dataset = train_val_set[1]
 
         # --- Prepare class histogram and loss ---
+        class_hist = label_histograms[fold_idx]
 
-        # class_hist = utils.compute_label_histogram(train_dataset, label_config)
-
-        class_hist = None
-        loss_fn = instantiate(cfg.architecture.loss, label_config=label_config, class_histogram=class_hist)
-
-        print(" -> Dataset Counting Done")
+        loss_fn = instantiate(cfg.component.classifier_head.loss, label_config=label_config, class_histogram=class_hist)
+        entropy_loss = instantiate(cfg.component.pooling_layer.loss)
 
         # --- Get EEGNet shape info ---
         data_spec = train_dataset.element_spec["data"]
         _, E, C, T = data_spec.shape
 
         # --- Resolve model args ---
-        eegnet_args = dict(cfg.architecture.model.eegnet_args)
+        eegnet_args = dict(cfg.component.feature_extractor.eegnet)
         eegnet_args["num_channels"] = C
         eegnet_args["num_samples"] = T
-        eegnet_args["activation"] = getattr(tf.nn, eegnet_args["activation"])
+        eegnet_args["activation"] = utils.get_activation(eegnet_args["activation"])
 
-        pooling_args = dict(cfg.architecture.model.pooling_args)
+        pooling_args = dict(cfg.component.pooling_layer.pool)
         pooling_args["activation"] = getattr(tf.nn, pooling_args["activation"])
 
-        model = instantiate(cfg.architecture.model, eegnet_args=eegnet_args, pooling_args=pooling_args)
+        head_args = dict(cfg.component.classifier_head.head)
+
+        model = EEGNetStack(
+            eegnet_args=eegnet_args,
+            classifier_head_args=head_args,
+            pool_args=pooling_args
+        )
         
         # Now create optimizer after variables exist
         optimizer = instantiate(cfg.optimizer)
 
         # --- Evaluator ---
         evaluator = instantiate(
-            cfg.architecture.evaluator,
+            cfg.component.classifier_head.evaluator,
             label_config=label_config,
         )
 
@@ -110,11 +113,12 @@ def main(cfg: DictConfig):
             model=model,
             optimizer=optimizer,
             loss_fn=loss_fn,
+            attention_loss=entropy_loss,
             evaluator=evaluator,
             train_dataset=train_dataset,
             val_dataset=val_dataset,
-            model_input_lookup=cfg.architecture.model_input_lookup,
-            model_target_lookup=cfg.architecture.model_target_lookup,
+            model_input_lookup=cfg.component.feature_extractor.model_input_lookup,
+            model_target_lookup=cfg.component.classifier_head.model_target_lookup,
             save_ckpt=cfg.training.save_ckpt,
             ckpt_interval=cfg.training.ckpt_interval,
             ckpt_save_dir=cfg.training.ckpt_save_dir,

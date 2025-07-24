@@ -3,31 +3,54 @@ import numpy as np
 import tensorflow as tf
 import atexit
 
+from collections import Counter
+
 class EEGRecordingDatasetTF:
-    def __init__(self, h5_file_path, dataset_name, label_config, transform=None, omit_channels=None, subject_ids=None):
+    def __init__(self, h5_file_path, dataset_name, label_config, transform=None, omit_channels=None, subject_ids=None, mirror_flag=False):
+        # Initialize the dataset access
         self.h5_file_path = h5_file_path
         self.dataset_name = dataset_name
+        self.h5 = h5py.File(h5_file_path, "r")
+        atexit.register(self.close)
+
+        # Handle the human-readable map and internal label map
         self.label_map = label_config["label_map"]
         self.inverse_label_map = label_config["inverse_label_map"]
-
-        # Construct internal label map from keys in label_map (unsorted)
         self.label_map_internal = {key: i for i, key in enumerate(self.label_map.keys())}
+        self.inverse_label_map_internal = {v: k for k, v in self.label_map_internal.items()}
 
         self.transform = transform
         self.omit_channels = set(omit_channels or [])
-
-        self.h5 = h5py.File(h5_file_path, "r")
-        atexit.register(self.close)
 
         all_subject_ids = list(self.h5[self.dataset_name].keys())
         self.subject_ids = subject_ids if subject_ids is not None else all_subject_ids
         self.max_epochs = self.h5.attrs["max_epochs"]
 
+        self.build_lookup()
+
+        # Get the channel names
         first_subject = self.subject_ids[0]
         channel_names_raw = self.h5[self.dataset_name][first_subject].attrs["channel_names"]
         self.original_channel_names = [name.decode("utf-8") if isinstance(name, bytes) else name for name in channel_names_raw]
         self.keep_indices = [i for i, ch in enumerate(self.original_channel_names) if ch not in self.omit_channels]
         self.channel_names = [self.original_channel_names[i] for i in self.keep_indices]
+
+        if mirror_flag:
+            # Extend the lookup table
+            self.extend_mirror()
+
+            # Construct the permutation index
+            mirror_pairs = [('Fp1', 'Fp2'), ('F3', 'F4'), ('C3', 'C4'), ('P3', 'P4'),
+                            ('O1', 'O2'), ('F7', 'F8'), ('T3', 'T4'), ('T5', 'T6'), ('A1', 'A2')]
+            name_to_idx = {name: i for i, name in enumerate(self.channel_names)}
+            mirror_idx = list(range(len(self.channel_names)))
+            for left, right in mirror_pairs:
+                if left in name_to_idx and right in name_to_idx:
+                    i, j = name_to_idx[left], name_to_idx[right]
+                    mirror_idx[i], mirror_idx[j] = j, i
+            self.mirror_permu = np.array(mirror_idx, dtype=np.int32)
+        else:
+            self.mirror_permu = None
 
         shape_sample = self.__getitem__(0)
         self.output_signature = {
@@ -40,33 +63,25 @@ class EEGRecordingDatasetTF:
         }
 
     def __len__(self):
-        return len(self.subject_ids)
+        return len(self.sample_metadata)
 
     def __getitem__(self, idx): 
-        subject_id = self.subject_ids[idx]
+        subject = self.sample_metadata[idx]
+
+        subject_id = subject["subject_id"]
         subj_group = self.h5[self.dataset_name][subject_id]
         data = subj_group["data"][()]
 
         if self.keep_indices:
             data = data[:, self.keep_indices, :]
 
-        labels = subj_group.attrs["class_labels"]
-        if isinstance(labels[0], bytes):
-            labels = [l.decode("utf-8") for l in labels]
+        if subject["is_mirrored"] and self.mirror_permu is not None:
+            data = data[:, self.mirror_permu, :]
 
-        label_ids = np.full((3,), -1, dtype=np.int32)
-        label_mask = np.zeros((3,), dtype=bool)
-        for i in range(min(3, len(labels))):
-            label_ids[i] = self.label_map.get(labels[i], -1)
-            label_mask[i] = label_ids[i] != -1
-
-        # Infer internal label from deepest known label
-        for i in reversed(range(3)):
-            if label_mask[i]:
-                internal_label = self.label_map_internal.get(labels[i], -1)
-                break
-        else:
-            raise ValueError("Invalid label vector: all -1")
+        # Load labels from the lookup list
+        labels = subject["labels"]
+        label_mask = subject["label_mask"]
+        internal_label = subject["internal_label"]
 
         n_epochs, _, n_time = data.shape
         data = data.astype(np.float32)
@@ -81,12 +96,76 @@ class EEGRecordingDatasetTF:
 
         return {
             "data": data,
-            "labels": label_ids,
+            "labels": labels,
             "label_mask": label_mask,
             "attention_mask": attention_mask,
             "subject_id": np.asarray(subject_id.encode("utf-8"), dtype=np.string_),
             "internal_label": np.int32(internal_label)
         }
+
+    def build_lookup(self):
+        self.sample_metadata = []
+
+        for sid in self.subject_ids:
+            subj_group = self.h5[self.dataset_name][sid]
+            labels = subj_group.attrs["class_labels"]
+            if isinstance(labels[0], bytes):
+                labels = [l.decode("utf-8") for l in labels]
+
+            label_ids = np.full((3,), -1, dtype=np.int32)
+            label_mask = np.zeros((3,), dtype=bool)
+            for i in range(min(3, len(labels))):
+                label_ids[i] = self.label_map.get(labels[i], -1)
+                label_mask[i] = label_ids[i] != -1
+
+            for i in reversed(range(3)):
+                if label_mask[i]:
+                    internal_label = self.label_map_internal.get(labels[i], -1)
+                    break
+            else:
+                continue  # skip if invalid
+
+            self.sample_metadata.append({
+                "subject_id": sid,
+                "labels": label_ids,
+                "label_mask": label_mask,
+                "internal_label": internal_label,
+                "is_mirrored": False
+            })
+
+    def extend_mirror(self):
+        new_entries = []
+
+        for subject in self.sample_metadata:
+            old_internal_label = subject["internal_label"]
+            if old_internal_label == 4:
+                new_internal_label = 5
+            elif old_internal_label == 5:
+                new_internal_label = 4
+            else:
+                continue
+
+            # Copy label vectors
+            new_labels = subject["labels"].copy()
+            new_label_mask = subject["label_mask"].copy()
+
+            # Replace the deepest label
+            for i in reversed(range(3)):
+                if new_label_mask[i]:
+                    new_labels[i] = new_internal_label
+                    break
+
+            mirrored_subject = {
+                "subject_id": subject["subject_id"],
+                "labels": new_labels,
+                "label_mask": new_label_mask,
+                "internal_label": new_internal_label,
+                "is_mirrored": True
+            }
+
+            new_entries.append(mirrored_subject)
+
+        self.sample_metadata.extend(new_entries)
 
     def generator(self):
         for i in range(len(self)):
@@ -98,7 +177,7 @@ class EEGRecordingDatasetTF:
             output_signature=self.output_signature
         )
         if shuffle:
-            ds = ds.shuffle(buffer_size=len(self.subject_ids))
+            ds = ds.shuffle(buffer_size=len(self.sample_metadata))
         ds = ds.batch(batch_size)
         ds = ds.prefetch(buffer_size=num_parallel_calls)
         return ds
@@ -113,9 +192,9 @@ class EEGRecordingDatasetTF:
                 t.set_shape(s.shape)
             return dict(zip(self.output_signature.keys(), out))
 
-        ds = tf.data.Dataset.range(len(self.subject_ids))
+        ds = tf.data.Dataset.range(len(self.sample_metadata))
         if shuffle:
-            ds = ds.shuffle(len(self.subject_ids))
+            ds = ds.shuffle(len(self.sample_metadata))
         ds = ds.map(tf_getitem, num_parallel_calls=num_parallel_calls)
         ds = ds.batch(batch_size)
         ds = ds.prefetch(1)
@@ -138,6 +217,17 @@ class EEGRecordingDatasetTF:
     def get_subject_ids(self):
         return self.subject_ids
 
+    def get_label_histogram(self):
+        counter = Counter()
+
+        for subject in self.sample_metadata:
+            internal_label = subject["internal_label"]
+            label_str = self.inverse_label_map_internal[internal_label]
+            counter[label_str] += 1
+
+        return dict(counter)
+
+
 if __name__ == "__main__":
     # === Example usage ===
 
@@ -149,16 +239,12 @@ if __name__ == "__main__":
     dataset = EEGRecordingDatasetTF(
         h5_file_path="ml_tflm/dataset/agenda_data_01/combined_south_africa_monopolar_standard_10_20.h5",
         dataset_name="combined_south_africa_monopolar_standard_10_20",
-        label_config=label_config
+        label_config=label_config, 
+        mirror_flag=True
         )
 
-    tf_dataset = dataset.as_generator(batch_size=4, shuffle=False)
+    hist = dataset.get_label_histogram()
+    print(hist)
 
-    for batch in tf_dataset.take(1):
-        print("=== Batch Contents ===")
-        print("data:", batch["data"].shape)  # Expected: [4, max_epochs, channels, time]
-        print("attention_mask:", batch["attention_mask"].shape)  # Expected: [4, max_epochs]
-        print("internal_label:", batch["internal_label"])  # Expected: [4]
-        print("subject_id:", batch["subject_id"])  # Shape: [4]
 
     dataset.close()

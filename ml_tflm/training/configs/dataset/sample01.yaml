@@ -1,2 +1,4 @@
 h5_path: ml_tflm/dataset/agenda_data_01/combined_south_africa_monopolar_standard_10_20.h5
 name: combined_south_africa_monopolar_standard_10_20
+
+ablation: ["A1","A2"]

@@ -49,7 +49,7 @@ def load_label_config(json_path):
 def load_eeg_datasets_split(h5_file_path, dataset_name, label_config, 
                             val_frac=0.2, test_frac=0.1, k_fold=False,
                             omit_channels=None, seed=42, 
-                            batch_size=1, shuffle=True):
+                            batch_size=1, shuffle=True, mirror_flag=False):
     # Load subject IDs
     with h5py.File(h5_file_path, "r") as f:
         subject_ids = sorted(list(f[dataset_name].keys()))
@@ -74,14 +74,15 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
             raise ValueError("Not enough data for training or validation split. "
                              f"{len(train_ids)=}, {len(val_ids)=}, {n_total=}")
         
+        # Generate the train validation sets
+        train_gen = _make_tf_generator(train_ids, h5_file_path, dataset_name, label_config, omit_channels, mirror_flag=mirror_flag)
         train_val_sets = [(
-            _make_tf_dataset(train_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle),
-            _make_tf_dataset(val_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle)
+            train_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1),
+            _make_tf_generator(val_ids, h5_file_path, dataset_name, label_config, omit_channels).get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
             ),]
         
-        test_dataset =_make_tf_dataset(test_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle) if n_test > 0 else None
-
-        return train_val_sets, test_dataset
+        # Get the label histograms
+        label_histograms = [train_gen.get_label_histogram(),]
 
     else:
         # K-Fold mode
@@ -95,6 +96,7 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
             folds[idx % num_folds].append(sid)
 
         train_val_sets = []
+        label_histograms = []
         for i in range(num_folds):
             val_ids = folds[i]
             train_ids = [sid for j, fold in enumerate(folds) if j != i for sid in fold]
@@ -102,24 +104,35 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
             if len(train_ids) == 0 or len(val_ids) == 0:
                 raise ValueError(f"Fold {i}: empty training or validation set.")
 
-            train_val_sets.append((
-                _make_tf_dataset(train_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle),
-                _make_tf_dataset(val_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle)
-            ))
+            # Generate the train validation sets
+            train_gen = _make_tf_generator(train_ids, h5_file_path, dataset_name, label_config, omit_channels, mirror_flag=mirror_flag)
+            train_val_set = (
+                train_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1),
+                _make_tf_generator(val_ids, h5_file_path, dataset_name, label_config, omit_channels).get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
+                )
+            
+            train_val_sets.append(train_val_set)
 
-        test_dataset = _make_tf_dataset(test_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle) if n_test > 0 else None
-        print(f"Dataset Splitter: {num_folds}-fold dataset generated")
-        return train_val_sets, test_dataset
+            # Get and append the label histograms
+            label_histograms.append(train_gen.get_label_histogram())
+            
+            print(f"Dataset Splitter: {num_folds}-fold dataset generated")
 
-def _make_tf_dataset(subject_ids, h5_file_path, dataset_name, label_config, omit_channels, batch_size, shuffle):
+    # Generate the test sets
+    test_dataset =_make_tf_generator(test_ids, h5_file_path, dataset_name, label_config, omit_channels).get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1) if n_test > 0 else None
+    
+    return train_val_sets, test_dataset, label_histograms
+
+def _make_tf_generator(subject_ids, h5_file_path, dataset_name, label_config, omit_channels, mirror_flag=False):
     generator = EEGRecordingDatasetTF(
         h5_file_path=h5_file_path,
         dataset_name=dataset_name,
         label_config=label_config,
         omit_channels=omit_channels,
-        subject_ids=subject_ids
+        subject_ids=subject_ids,
+        mirror_flag=mirror_flag
     )
-    return generator.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
+    return generator
 
 def get_model_size_tf(model):
     size_bytes = sum([tf.keras.backend.count_params(w) * w.dtype.size for w in model.weights])
@@ -179,7 +192,36 @@ def get_activation(name):
         "tanh": tf.nn.tanh,
         "sigmoid": tf.nn.sigmoid,
         "hard_sigmoid": tf.keras.activations.hard_sigmoid,
-        "hard_swish": tf.nn.hard_swish,
+        "hard_swish": hard_swish,
         "gelu": tf.nn.gelu,
         "swish": tf.nn.swish
     }[name]
+
+def hard_swish(x):
+    return x * tf.nn.relu6(x + 3) / 6.0
+
+def print_confusion_matrix(cm: np.ndarray, class_labels=None):
+    """
+    Pretty-print a confusion matrix to the terminal.
+
+    Args:
+        cm (np.ndarray): 2D array confusion matrix.
+        class_labels (list of str): Optional class label names.
+    """
+    if class_labels is None:
+        class_labels = [str(i) for i in range(cm.shape[0])]
+
+    # Ensure same width for all labels
+    max_label_len = max(len(label) for label in class_labels)
+    col_width = max(max_label_len, 5)
+
+    # Header
+    print(" " * (col_width + 2) + "Predicted")
+    print(" " * (col_width + 2) + "  ".join(f"{label:>{col_width}}" for label in class_labels))
+    print(" " * (col_width + 2) + "-" * (col_width + 2) * len(class_labels))
+
+    # Rows
+    for i, row in enumerate(cm):
+        row_label = class_labels[i]
+        row_str = "  ".join(f"{val:>{col_width}d}" for val in row)
+        print(f"{row_label:>{col_width}} | {row_str}")

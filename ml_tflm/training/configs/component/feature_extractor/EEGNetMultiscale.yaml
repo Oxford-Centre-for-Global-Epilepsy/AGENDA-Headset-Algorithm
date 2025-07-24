@@ -1,11 +1,11 @@
 eegnet:
-  F1: 16
+  F1: 32
   D: 2
   F2: 4
   dropout_rate: 0.5
   bottleneck_dim: 0
-  kernel_length: 64
-  temporal_type: 'vanilla'
+  kernel_length: 8
+  temporal_type: 'multiscale'
   activation: elu  # resolve in Python
 
 model_input_lookup:

@@ -1,0 +1,19 @@
+head:
+  type: flat
+
+loss:
+  _target_: ml_tflm.training.loss.StructureAwareLoss
+
+  clip_value: 10.0
+  temperature: 0.1
+
+  dist_1_2: 0.4
+  dist_2_2: 0.2
+
+evaluator:
+  _target_: ml_tflm.training.metrics.metric_evaluator
+  label_config: null
+  prediction_caster: cast_prediction_flat
+
+model_target_lookup:
+  targets: internal_label
