@@ -23,9 +23,9 @@ rule bandpass_filter_data:
     touch: True
     shell:
         """
-        echo "📡 Applying bandpass filter to {input.edf}"
+        echo "Applying bandpass filter to {input.edf}"
         
-        echo "🔍 Running bandpass filter with:"
+        echo "Running bandpass filter with:"
         echo "    Wildcards: {wildcards}"
         
         mkdir -p $(dirname {output.fif})

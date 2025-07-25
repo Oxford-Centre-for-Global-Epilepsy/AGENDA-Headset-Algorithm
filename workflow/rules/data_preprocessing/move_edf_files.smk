@@ -15,7 +15,7 @@ rule move_edf_files:
         data_edf + "/{sample}.edf"
     shell:
         """
-        echo "🚚 Moving {input} → {output}"
+        echo "Moving {input} → {output}"
         mkdir -p $(dirname {output})
         mv "{input}" "{output}"
         """

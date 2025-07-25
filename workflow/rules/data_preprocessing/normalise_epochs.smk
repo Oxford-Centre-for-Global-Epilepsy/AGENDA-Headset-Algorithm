@@ -19,7 +19,7 @@ rule normalise_epoched_data:
     touch: True
     shell:
         """
-        echo "🔄  Normalising {input} → {output}"
+        echo "Normalising {input} → {output}"
         mkdir -p $(dirname {output.fif})
         set -ex
         python {params.script} "{input.fif}" "{output.fif}"

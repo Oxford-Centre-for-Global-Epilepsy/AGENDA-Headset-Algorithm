@@ -21,7 +21,7 @@ rule epoch_data:
     touch: True
     shell:
         """
-        echo "🔄  Epoching {input} → {output}"
+        echo "Epoching {input} → {output}"
         mkdir -p $(dirname {output.fif})
         set -ex
         python {params.script} "{input.fif}" "{output.fif}" "{input.config}"

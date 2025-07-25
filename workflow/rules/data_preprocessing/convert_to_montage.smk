@@ -23,7 +23,7 @@ rule convert_to_montage:
     touch: True
     shell:
         """
-        echo "⚡ Converting {input.fif} to {wildcards.montage_type} ({wildcards.montage_name}): {output.fif}"
+        echo "Converting {input.fif} to {wildcards.montage_type} ({wildcards.montage_name}): {output.fif}"
         mkdir -p $(dirname {output.fif})
         set -ex
         python {params.script} "{input.fif}" "{output.fif}" "{input.config}" "{wildcards.montage_type}" "{wildcards.montage_name}"

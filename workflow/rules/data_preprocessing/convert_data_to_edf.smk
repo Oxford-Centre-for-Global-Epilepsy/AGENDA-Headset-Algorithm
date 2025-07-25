@@ -19,7 +19,7 @@ rule convert_eeg_to_edf:
         converter=converter
     shell:
         """
-        echo "🔄 Converting {input} → {output}"
+        echo "Converting {input} → {output}"
         mkdir -p $(dirname {output})
         {params.converter} -no-annotations "{input}"
         """
@@ -34,6 +34,6 @@ rule rename_converted_edf:
         data_raw + "/{sample}.edf"
     shell:
         """
-        echo "📝 Renaming {input} → {output}"
+        echo "Renaming {input} → {output}"
         mv "{input}" "{output}"
         """
