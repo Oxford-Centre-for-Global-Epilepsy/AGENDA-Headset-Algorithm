@@ -20,7 +20,7 @@ rule epoch_data:
         "../../envs/data_preprocessing.yaml"
     shell:
         """
-        echo "🔄  Epoching {input} → {output}"
+        echo "Epoching {input} → {output}"
         mkdir -p $(dirname {output.fif})
         python {params.script} "{input.fif}" "{output.fif}" "{input.config}" 
         """

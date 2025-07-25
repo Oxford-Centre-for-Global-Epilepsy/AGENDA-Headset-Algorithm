@@ -18,7 +18,7 @@ rule normalise_epoched_data:
         "../../envs/data_preprocessing.yaml"
     shell:
         """
-        echo "🔄  Normalising {input} → {output}"
+        echo "Normalising {input} → {output}"
         mkdir -p $(dirname {output.fif})
         python {params.script} "{input.fif}" "{output.fif}" 
         """

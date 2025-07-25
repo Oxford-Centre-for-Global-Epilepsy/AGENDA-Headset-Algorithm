@@ -3,7 +3,7 @@
 #
 #   Workflow Purpose: Convert raw data files to common file format (.edf)
 # ========================================================================
-include: "rules/convert_data_to_edf.smk"
+include: "rules/data_preprocessing/convert_data_to_edf.smk"
 #include: "rules/move_edf_files.smk"
 
 import os

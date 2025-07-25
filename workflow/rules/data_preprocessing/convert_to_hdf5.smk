@@ -23,7 +23,7 @@ rule convert_to_hdf5:
         script = "scripts/data_preprocessing/convert_to_hdf5.py"
     shell:
         """
-        echo "📦 Converting {input.fif} → {output.hdf5}"
+        echo "Converting {input.fif} → {output.hdf5}"
         mkdir -p $(dirname {output.hdf5})
         python {params.script} "{input.fif}" "{output.hdf5}" "{input.config}" "{wildcards.montage_type}" "{wildcards.montage_name}" "{wildcards.site}" "{wildcards.data_label}"
         """

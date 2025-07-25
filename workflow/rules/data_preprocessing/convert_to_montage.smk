@@ -22,7 +22,7 @@ rule convert_to_montage:
         "../../envs/data_preprocessing.yaml"
     shell:
         """
-        echo "⚡ Converting {input.fif} to {wildcards.montage_type} ({wildcards.montage_name}): {output.fif}"
+        echo "Converting {input.fif} to {wildcards.montage_type} ({wildcards.montage_name}): {output.fif}"
         mkdir -p $(dirname {output.fif})
         python {params.script} "{input.fif}" "{output.fif}" "{input.config}" "{wildcards.montage_type}" "{wildcards.montage_name}"
         """

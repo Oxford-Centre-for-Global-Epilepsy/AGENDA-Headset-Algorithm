@@ -20,7 +20,7 @@ rule resample_data:
         "../../envs/data_preprocessing.yaml"
     shell:
         """
-        echo "🔄  Resampling {input} → {output}"
+        echo "Resampling {input} → {output}"
         mkdir -p $(dirname {output.fif})
         python {params.script} "{input.fif}" "{output.fif}" "{input.config}" 
         """
