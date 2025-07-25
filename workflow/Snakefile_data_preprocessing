@@ -102,5 +102,3 @@ rule all:
         #expand(data_temp + "/{montage_type_name[0]}/{montage_type_name[1]}/{site_sample[0]}/{site_sample[1]}_normalised.fif", site_sample=EDF_SITE_FILEPATHS, montage_type_name=MONTAGE_PAIRS)
         expand(data_processed + "/{montage_type_name[0]}/{montage_type_name[1]}/{site_sample[0]}/{site_sample[1]}.h5", site_sample=EDF_SITE_FILEPATHS, montage_type_name=MONTAGE_PAIRS)
     
-    
-    

@@ -15,14 +15,16 @@ rule convert_to_montage:
         fif = data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_resampled.fif",
         config=config_path
     output:
-        fif = temp(data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_headset_montage.fif")
+        fif = data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_headset_montage.fif"
     params:
         script="scripts/data_preprocessing/convert_to_montage.py"
     conda:
         "../../envs/data_preprocessing.yaml"
+    touch: True
     shell:
         """
         echo "⚡ Converting {input.fif} to {wildcards.montage_type} ({wildcards.montage_name}): {output.fif}"
         mkdir -p $(dirname {output.fif})
+        set -ex
         python {params.script} "{input.fif}" "{output.fif}" "{input.config}" "{wildcards.montage_type}" "{wildcards.montage_name}"
         """

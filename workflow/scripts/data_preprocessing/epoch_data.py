@@ -47,16 +47,27 @@ def window_data(input_fif, output_fif, config_file):
     # Create fake events to define window boundaries
     events = np.array([[start, 0, 1] for start in start_samples])
 
-    # Create epochs from the sliding windows
+    # Adjust tmax to get exactly `window_samples` samples per epoch
+    adjusted_tmax = (window_samples - 1) / sfreq
+
     epochs = mne.Epochs(
-        raw, events, event_id=1, tmin=0, tmax=window_duration, baseline=baseline,
+        raw, events, event_id=1, tmin=0, tmax=adjusted_tmax, baseline=baseline,
         detrend=1, preload=True
     )
+
 
     print(f"💾 Saving windowed data to: {output_fif}")
     epochs.save(output_fif, overwrite=True)
 
     print("✅ Windowing complete!")
+
+    # Ensure output file has updated modification time
+    try:
+        os.utime(output_file, None)
+        print(f"DEBUG: Touched output file: {output_file}", flush=True)
+    except Exception as e:
+        print(f"WARNING: Failed to update mtime: {e}", flush=True)
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:

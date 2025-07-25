@@ -76,3 +76,10 @@ try:
 except Exception as e:
     print(f"ERROR during resample_data.py: {e}", flush=True)
     sys.exit(1)
+
+# Ensure output file has updated modification time
+try:
+    os.utime(output_file, None)
+    print(f"DEBUG: Touched output file: {output_file}", flush=True)
+except Exception as e:
+    print(f"WARNING: Failed to update mtime: {e}", flush=True)

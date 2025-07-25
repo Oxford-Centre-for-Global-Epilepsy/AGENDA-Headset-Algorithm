@@ -40,6 +40,14 @@ def normalise_epochs(epochs):
 
     return epochs
 
+    # Ensure output file has updated modification time
+    try:
+        os.utime(output_file, None)
+        print(f"DEBUG: Touched output file: {output_file}", flush=True)
+    except Exception as e:
+        print(f"WARNING: Failed to update mtime: {e}", flush=True)
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python scripts/normalize_epoched_data.py <input_fif> <output_fif>")

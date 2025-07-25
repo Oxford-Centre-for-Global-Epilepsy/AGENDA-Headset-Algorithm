@@ -93,6 +93,14 @@ def convert_to_hdf5(input_fif, output_hdf5, config_file, montage_type, montage_n
 
     print("✅ HDF5 conversion complete!")
 
+    # Touch the output file to update its modification time (fix WSL clock skew issues)
+    try:
+        os.utime(output_hdf5, None)
+        print(f"⏱️ Touched output file to refresh mtime: {output_hdf5}")
+    except Exception as e:
+        print(f"⚠️ Failed to update mtime of {output_hdf5}: {e}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 8:
         print("Usage: python scripts/convert_to_hdf5.py <input_fif> <output_hdf5> <config_file> <montage_type> <montage_name> <site> <class_label>", flush=True)

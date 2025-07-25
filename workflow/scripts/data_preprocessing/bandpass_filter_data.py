@@ -1,6 +1,7 @@
 import mne
 import yaml
 import sys
+import os
 
 def bandpass_filter(input_file, output_file, config_file):
     """Apply bandpass filter to EEG data."""
@@ -25,6 +26,14 @@ def bandpass_filter(input_file, output_file, config_file):
     # Save filtered data
     raw.save(output_file, overwrite=True)
     print(f"✅ Saved filtered EEG to {output_file}")
+
+    # Ensure output file has updated modification time
+    try:
+        os.utime(output_file, None)
+        print(f"DEBUG: Touched output file: {output_file}", flush=True)
+    except Exception as e:
+        print(f"WARNING: Failed to update mtime: {e}", flush=True)
+
 
 if __name__ == "__main__":
     input_fif = sys.argv[1]

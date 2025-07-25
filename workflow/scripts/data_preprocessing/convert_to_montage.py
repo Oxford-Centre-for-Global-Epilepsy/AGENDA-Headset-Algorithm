@@ -32,7 +32,10 @@ def load_montage(montage_path, montage_type, montage_name):
 
         # Monopolar Montage to be applied to the data
         if montage_type == "monopolar" and montage_name in montage_config["montages"]["monopolar"]:
-            channels = montage_config["montages"]["monopolar"][montage_name]["channels"]
+            config_entry = montage_config["montages"]["monopolar"][montage_name]
+            channels = config_entry.get("include") or config_entry.get("channels")
+            if not channels:
+                raise ValueError(f"❌ No channels defined for monopolar montage '{montage_name}'")
             return "monopolar", channels, None
 
         raise ValueError(f"❌ Unknown montage: {montage_name}")
@@ -93,24 +96,48 @@ def convert_to_bipolar(raw, anodes, cathodes):
 
 def convert_to_monopolar(raw, selected_channels):
     """
-    Select specific monopolar channels.
+    Select specific monopolar channels from raw data using flexible matching.
 
     Parameters:
     raw : mne.io.Raw
         The raw EEG data.
     selected_channels : list
-        List of channels to retain.
+        List of canonical channel names to retain (e.g., 'FP1', 'Cz', ...).
 
     Returns:
     mne.io.Raw
-        The raw EEG data with only selected channels.
+        Raw data with only selected channels kept.
     """
-    # Ensure case-insensitive matching
-    ch_names_lower = {ch.lower(): ch for ch in raw.ch_names}
-    selected_channels = [ch_names_lower[ch.lower()] for ch in selected_channels if ch.lower() in ch_names_lower]
-    
-    raw.pick_channels(selected_channels)
+    # Normalize raw channel names
+    raw_name_map = {}
+    for ch in raw.ch_names:
+        key = ch.upper().replace("EEG ", "").replace("-REF", "").strip()
+        raw_name_map[key] = ch
+
+    # Match requested channels
+    matched = []
+    unmatched = []
+    for ch in selected_channels:
+        key = ch.upper().strip()
+        if key in raw_name_map:
+            matched.append(raw_name_map[key])
+        else:
+            unmatched.append(ch)
+
+    # Debug info
+    print(raw.ch_names)
+    print("=" * 20)
+    print("Matched channels:", matched)
+    print("Unmatched channels:", unmatched)
+    print("=" * 20)
+
+    # Raise error if any channel was not matched
+    if unmatched:
+        raise ValueError(f"❌ Could not match these channels: {unmatched}")
+
+    raw.pick_channels(matched)
     return raw
+
 
 def process_montage(input_file, output_file, montage_path, montage_type, montage_name):
     """
@@ -154,6 +181,14 @@ def process_montage(input_file, output_file, montage_path, montage_type, montage
     # Save processed EEG file
     raw.save(output_file, overwrite=True)
     print(f"✅ EEG data saved to {output_file}")
+
+    # Ensure output file has updated modification time
+    try:
+        os.utime(output_file, None)
+        print(f"DEBUG: Touched output file: {output_file}", flush=True)
+    except Exception as e:
+        print(f"WARNING: Failed to update mtime: {e}", flush=True)
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 6:

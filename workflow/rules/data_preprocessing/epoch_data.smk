@@ -13,14 +13,16 @@ rule epoch_data:
         fif = data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_headset_montage.fif",
         config=data_epochs_config_path
     output:
-        fif = temp(data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_epoched.fif")
+        fif = data_temp + "/{montage_type}/{montage_name}/{site}/{data_label}/{sample}_epoched.fif"
     params:
         script="scripts/data_preprocessing/epoch_data.py"
     conda:
         "../../envs/data_preprocessing.yaml"
+    touch: True
     shell:
         """
         echo "🔄  Epoching {input} → {output}"
         mkdir -p $(dirname {output.fif})
-        python {params.script} "{input.fif}" "{output.fif}" "{input.config}" 
+        set -ex
+        python {params.script} "{input.fif}" "{output.fif}" "{input.config}"
         """

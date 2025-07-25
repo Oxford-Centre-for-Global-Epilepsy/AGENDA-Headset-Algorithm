@@ -10,7 +10,9 @@ montages_to_process:
   #  - 19_channel
   #  - 17_channel_no_A1_A2
   monopolar:
-  #  - standard_10_20
-    - 10_20_no_A1_A2
+    - standard_10_20
+  #  - 10_20_no_A1_A2
   #  - 10_20_no_T3_T4
   #  - 10_20_no_A1_A2_Cz
+
+rerun_triggers: []
