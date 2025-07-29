@@ -22,7 +22,9 @@ class EEGNet(tf.keras.Model):
                  kernel_length=64,
                  temporal_type='vanilla',
                  bottleneck_dim=None,
-                 activation=tf.nn.elu):
+                 activation=tf.nn.elu,
+                 norm_layer=None,
+                 l2_weight=-1):
         """
         Initializes EEGNet model layers.
 
@@ -37,16 +39,20 @@ class EEGNet(tf.keras.Model):
             temporal_type (string): Name of the temporal convolution block type.
             bottleneck_dim (int or None): If set, adds a dense bottleneck layer of this size.
             activation (function): Activation function to use (e.g., tf.nn.elu).
+            norm_layer (callable or None): A normalization layer constructor (e.g., tf.keras.layers.LayerNormalization).
+                                            If None, no normalization is applied.
+            l2_weight (float): L2 regularization weight. Set < 0 to disable.
         """
         super().__init__()
         self.activation = activation
         self.bottleneck_dim = bottleneck_dim
+        self.l2_weight = l2_weight
 
         # Temporal convolution block (extracts frequency features)
-        if temporal_type=='vanilla':
+        if temporal_type == 'vanilla':
             self.firstconv = models.Sequential([
                 layers.Conv2D(F1, (1, kernel_length), padding='same', use_bias=False),
-                layers.LayerNormalization()
+                norm_layer() if norm_layer is not None else layers.Lambda(lambda x: x)
             ])
         elif temporal_type == 'multiscale':
             dilation_rates = [1, 2, 4, 8]
@@ -58,7 +64,7 @@ class EEGNet(tf.keras.Model):
                                        kernel_size=(1, kernel_length),
                                        dilation_rates=dilation_rates,
                                        activation=activation),
-                layers.LayerNormalization()
+                norm_layer() if norm_layer is not None else layers.Lambda(lambda x: x)
             ])
         else:
             raise ValueError(f"Unknown temporal_type: {temporal_type}")
@@ -66,7 +72,7 @@ class EEGNet(tf.keras.Model):
         # Spatial filtering block using depthwise convolution
         self.depthwiseConv = models.Sequential([
             layers.DepthwiseConv2D((num_channels, 1), depth_multiplier=D, use_bias=False),
-            layers.LayerNormalization(),
+            norm_layer() if norm_layer is not None else layers.Lambda(lambda x: x),
             layers.Activation(self.activation),
             layers.AveragePooling2D((1, 4)),  # Downsample time dimension
             layers.Dropout(dropout_rate)
@@ -75,7 +81,7 @@ class EEGNet(tf.keras.Model):
         # Separable convolution block (pointwise conv after spatial)
         self.separableConv = models.Sequential([
             layers.SeparableConv2D(F2, (1, 16), padding='same', use_bias=False),
-            layers.LayerNormalization(),
+            norm_layer() if norm_layer is not None else layers.Lambda(lambda x: x),
             layers.Activation(self.activation),
             layers.AveragePooling2D((1, 8)),  # Further downsampling
             layers.Dropout(dropout_rate)
@@ -90,7 +96,7 @@ class EEGNet(tf.keras.Model):
         else:
             self.bottleneck = None
 
-    def call(self, inputs, return_features=False):
+    def call(self, inputs, return_features=False, training=False):
         """
         Forward pass of EEGNet.
 
@@ -105,10 +111,10 @@ class EEGNet(tf.keras.Model):
         """
         # Apply temporal convolution
         x = self.firstconv(inputs)  # [B, C, T, F1]
-        
+
         # Apply spatial filtering via depthwise conv
         x1 = self.depthwiseConv(x)  # [B, 1, T', F1 * D]
-        
+
         # Apply separable convolution
         x2 = self.separableConv(x1)  # [B, 1, T'', F2]
 
@@ -118,6 +124,16 @@ class EEGNet(tf.keras.Model):
         # Optional bottleneck
         if self.bottleneck is not None:
             x_flat = self.bottleneck(x_flat)
+
+        # Add L2 regularization on all eligible weights
+        if self.l2_weight >= 0:
+            for block in [self.firstconv, self.depthwiseConv, self.separableConv, self.bottleneck]:
+                if block is None:
+                    continue
+                for layer in block.layers if hasattr(block, 'layers') else [block]:
+                    for attr in ["kernel", "depthwise_kernel", "pointwise_kernel"]:
+                        if hasattr(layer, attr):
+                            self.add_loss(tf.keras.regularizers.l2(self.l2_weight)(getattr(layer, attr)))
 
         # Return intermediate layers for visualization or debugging
         if return_features:
@@ -130,6 +146,7 @@ class EEGNet(tf.keras.Model):
 
         # Default return: final feature vector
         return x_flat
+
 
 class MultiScaleTemporalConv(tf.keras.layers.Layer):
     """

@@ -31,7 +31,7 @@ def explore_h5_structure(file_path):
                             print(f"- {name}/{subname}: {d[()]}")
 
 if __name__ == "__main__":
-    h5_file_path="ml_tflm/dataset/agenda_data_01/combined_south_africa_monopolar_standard_10_20.h5"
+    h5_file_path="ml_tflm/dataset/agenda_data_03/combined_south_africa_monopolar_standard_10_20.h5"
     dataset_name="anyu_dataset_south_africa_monopolar_standard_10_20"
 
     explore_h5_structure(h5_file_path)

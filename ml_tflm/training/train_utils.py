@@ -1,8 +1,9 @@
 import h5py
 import random
-from ml_tflm.dataset.eeg_dataset import EEGRecordingTFGenerator
 from ml_tflm.dataset.eeg_dataset_rewrite import EEGRecordingDatasetTF
 import numpy as np
+from typing import List, Dict, Tuple, Optional
+from collections import defaultdict
 
 import json
 import os
@@ -121,6 +122,195 @@ def load_eeg_datasets_split(h5_file_path, dataset_name, label_config,
     # Generate the test sets
     test_dataset =_make_tf_generator(test_ids, h5_file_path, dataset_name, label_config, omit_channels).get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1) if n_test > 0 else None
     
+    return train_val_sets, test_dataset, label_histograms
+
+def prepare_eeg_datasets(
+    h5_file_path: str,
+    dataset_name: str,
+    label_config: dict,
+    val_frac: float = 0.2,
+    test_frac: float = 0.1,
+    k_fold: bool = False,
+    stratify: bool = False,
+    seed: int = 42,
+    omit_channels: Optional[List[str]] = None,
+    batch_size: int = 1,
+    shuffle: bool = True,
+    mirror_flag: bool = False,
+    internal_label_cap: Optional[Dict[str, int]] = None,
+) -> Tuple[List[Tuple[tf.data.Dataset, tf.data.Dataset]], Optional[tf.data.Dataset], List[dict]]:
+    """
+    Prepares EEG datasets by splitting subject metadata and generating tf.data.Dataset objects.
+    Supports optional stratification by 'internal_label' and optional class-wise segment cap.
+    """
+    dummy_dataset = EEGRecordingDatasetTF(
+        h5_file_path=h5_file_path,
+        dataset_name=dataset_name,
+        label_config=label_config,
+    )
+    sample_metadata = dummy_dataset.sample_metadata
+    dummy_dataset.close()
+
+    if internal_label_cap:
+        # Group metadata by label
+        grouped = defaultdict(list)
+        for entry in sample_metadata:
+            grouped[entry["internal_label"]].append(entry)
+
+        # Truncate each group if needed
+        sample_metadata = []
+        for label, entries in grouped.items():
+            if label in internal_label_cap:
+                # Sort to ensure reproducibility
+                random.Random(seed).shuffle(entries)
+                sample_metadata.extend(entries[:internal_label_cap[label]])
+            else:
+                sample_metadata.extend(entries)
+
+    if stratify:
+        grouped = defaultdict(list)
+        for entry in sample_metadata:
+            grouped[entry["internal_label"]].append(entry)
+
+        # Accumulate results from per-group splits
+        train_id_lists_by_group = []
+        val_id_lists_by_group = []
+        test_ids_all = []
+
+        for group in grouped.values():
+            train_lists, val_lists, test_ids = split_subjects(
+                sample_metadata=group,
+                val_frac=val_frac,
+                test_frac=test_frac,
+                seed=seed,
+                k_fold=k_fold,
+            )
+            train_id_lists_by_group.append(train_lists)
+            val_id_lists_by_group.append(val_lists)
+            test_ids_all.extend(test_ids)
+
+        num_folds = len(train_id_lists_by_group[0])
+        train_id_lists = [[] for _ in range(num_folds)]
+        val_id_lists = [[] for _ in range(num_folds)]
+
+        for fold_idx in range(num_folds):
+            for group_train_lists in train_id_lists_by_group:
+                train_id_lists[fold_idx].extend(group_train_lists[fold_idx])
+            for group_val_lists in val_id_lists_by_group:
+                val_id_lists[fold_idx].extend(group_val_lists[fold_idx])
+
+        test_ids = test_ids_all
+
+    else:
+        train_id_lists, val_id_lists, test_ids = split_subjects(
+            sample_metadata=sample_metadata,
+            val_frac=val_frac,
+            test_frac=test_frac,
+            seed=seed,
+            k_fold=k_fold,
+        )
+
+    train_val_sets, test_dataset, label_histograms = generate_tf_datasets(
+        train_id_lists=train_id_lists,
+        val_id_lists=val_id_lists,
+        test_ids=test_ids,
+        h5_file_path=h5_file_path,
+        dataset_name=dataset_name,
+        label_config=label_config,
+        omit_channels=omit_channels,
+        mirror_flag=mirror_flag,
+        batch_size=batch_size,
+        shuffle=shuffle,
+    )
+
+    return train_val_sets, test_dataset, label_histograms
+
+def split_subjects(
+    sample_metadata: List[Dict],
+    val_frac: float = 0.2,
+    test_frac: float = 0.1,
+    seed: int = 42,
+    k_fold: bool = False,
+) -> Tuple[List[List[str]], List[List[str]], List[str]]:
+    """
+    Splits subject metadata into train, val, and test sets.
+
+    Returns:
+        - train_id_lists: list of subject ID lists for training (1 or k-fold)
+        - val_id_lists: list of subject ID lists for validation (1 or k-fold)
+        - test_ids: list of subject IDs for testing
+    """
+    random.seed(seed)
+    shuffled = sample_metadata[:]
+    random.shuffle(shuffled)
+
+    subject_ids = [entry["subject_id"] for entry in shuffled]
+
+    n_total = len(subject_ids)
+    n_test = round(n_total * test_frac)
+
+    test_ids = subject_ids[:n_test]
+    remaining_ids = subject_ids[n_test:]
+
+    if not k_fold:
+        n_val = round(len(remaining_ids) * val_frac)
+        val_ids = remaining_ids[:n_val]
+        train_ids = remaining_ids[n_val:]
+        return [train_ids], [val_ids], test_ids
+
+    # K-fold logic
+    num_folds = max(2, round(1 / val_frac))
+    folds = [[] for _ in range(num_folds)]
+    for idx, sid in enumerate(remaining_ids):
+        folds[idx % num_folds].append(sid)
+
+    train_id_lists = []
+    val_id_lists = []
+    for i in range(num_folds):
+        val_ids = folds[i]
+        train_ids = [sid for j, fold in enumerate(folds) if j != i for sid in fold]
+        train_id_lists.append(train_ids)
+        val_id_lists.append(val_ids)
+
+    return train_id_lists, val_id_lists, test_ids
+
+def generate_tf_datasets(
+    train_id_lists: List[List[str]],
+    val_id_lists: List[List[str]],
+    test_ids: List[str],
+    h5_file_path: str,
+    dataset_name: str,
+    label_config: dict,
+    omit_channels: Optional[List[str]] = None,
+    mirror_flag: bool = False,
+    batch_size: int = 1,
+    shuffle: bool = True,
+) -> Tuple[List[Tuple[tf.data.Dataset, tf.data.Dataset]], Optional[tf.data.Dataset], List[dict]]:
+    """
+    Generates TensorFlow datasets from subject ID splits.
+    """
+    train_val_sets = []
+    label_histograms = []
+
+    for train_ids, val_ids in zip(train_id_lists, val_id_lists):
+        train_gen = _make_tf_generator(train_ids, h5_file_path, dataset_name,
+                                       label_config, omit_channels, mirror_flag=mirror_flag)
+        val_gen = _make_tf_generator(val_ids, h5_file_path, dataset_name,
+                                     label_config, omit_channels)
+
+        train_dataset = train_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
+        val_dataset = val_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
+
+        train_val_sets.append((train_dataset, val_dataset))
+        label_histograms.append(train_gen.get_label_histogram())
+
+    # Test dataset
+    test_dataset = None
+    if test_ids:
+        test_gen = _make_tf_generator(test_ids, h5_file_path, dataset_name,
+                                      label_config, omit_channels)
+        test_dataset = test_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
+
     return train_val_sets, test_dataset, label_histograms
 
 def _make_tf_generator(subject_ids, h5_file_path, dataset_name, label_config, omit_channels, mirror_flag=False):

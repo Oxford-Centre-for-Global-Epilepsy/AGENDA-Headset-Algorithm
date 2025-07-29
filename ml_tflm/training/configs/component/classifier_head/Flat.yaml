@@ -1,5 +1,7 @@
 head:
   type: flat
+  num_classes: 4
+  l2_weight: 1e-05
 
 loss:
   _target_: ml_tflm.training.loss.StructureAwareLoss

@@ -1,0 +1,3 @@
+pool:
+  pool: GRU
+  gru_units: 16

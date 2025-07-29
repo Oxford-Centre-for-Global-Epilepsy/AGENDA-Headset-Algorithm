@@ -1,4 +1,5 @@
 pool:
+  scorer: MLP
   hidden_dim: 16
   activation: tanh  # resolve in Python
   num_heads: 2

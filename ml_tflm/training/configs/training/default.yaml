@@ -1,6 +1,10 @@
 val_frac: 0.2
 test_frac: 0.0
 k_fold: False
+stratify: True
+internal_label_cap_keys: [0,3,4,5]
+internal_label_cap_values: [240,120,60,60]
+class_balance: True
 
 mirror_flag: False
 

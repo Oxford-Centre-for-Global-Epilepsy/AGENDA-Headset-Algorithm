@@ -4,29 +4,34 @@ from tensorflow.keras import layers
 # A multi-head classifier for hierarchical classification tasks.
 # Each Dense layer corresponds to a level in the hierarchy and produces separate logits.
 class HierarchicalClassifierHead(tf.keras.layers.Layer):
-    def __init__(self, num_classes=(2, 2, 2), l2_weight=1e-5):
+    def __init__(self, num_classes=(2, 2, 2), hidden_dim=0, l2_weight=1e-5):
         """
         Args:
-            num_classes (tuple): A 3-tuple specifying the number of output classes for each level.
-            l2_weight (float): L2 regularization strength applied to each Dense layer.
+            num_classes (tuple): Output class counts per level (e.g., (2, 2, 2))
+            hidden_dim (int): Shared hidden layer size. Set < 0 to disable.
+            l2_weight (float): L2 regularization for bottleneck (if used)
         """
         super().__init__()
-        regularizer = tf.keras.regularizers.l2(l2_weight)
-        
-        # One Dense layer per hierarchy level
-        self.heads = [
-            layers.Dense(num_classes[0], kernel_regularizer=regularizer),  # Level 1
-            layers.Dense(num_classes[1], kernel_regularizer=regularizer),  # Level 2
-            layers.Dense(num_classes[2], kernel_regularizer=regularizer),  # Level 3
-        ]
+        self.use_bottleneck = hidden_dim > 0
+
+        if self.use_bottleneck:
+            self.bottleneck = layers.Dense(
+                hidden_dim,
+                activation="relu",
+                kernel_regularizer=tf.keras.regularizers.l2(l2_weight)
+            )
+
+        self.heads = [layers.Dense(n) for n in num_classes]
 
     def call(self, x):
-        # Output dictionary containing logits for each level
+        if self.use_bottleneck:
+            x = self.bottleneck(x)
         return {
             "level1_logits": self.heads[0](x),
             "level2_logits": self.heads[1](x),
             "level3_logits": self.heads[2](x)
         }
+
 
 # A single-head classifier for flat (non-hierarchical) classification tasks.
 class FlatClassifierHead(tf.keras.layers.Layer):
@@ -49,7 +54,7 @@ class FlatClassifierHead(tf.keras.layers.Layer):
             "logits": self.classifier(x)
         }
 
-def GetClassifierHead(type, l2_weight=1e-5):
+def GetClassifierHead(type, num_classes, hidden_dim=0, l2_weight=1e-5):
     """
     Constructs a classifier head based on the specified type.
 
@@ -67,9 +72,9 @@ def GetClassifierHead(type, l2_weight=1e-5):
         ValueError: If the given type is not supported.
     """
     if type == 'flat':
-        return FlatClassifierHead(num_classes=4, l2_weight=l2_weight)
+        return FlatClassifierHead(num_classes=num_classes, l2_weight=l2_weight)
     elif type == 'hierarchical':
-        return HierarchicalClassifierHead(num_classes=(2, 2, 2), l2_weight=l2_weight)
+        return HierarchicalClassifierHead(num_classes=num_classes, hidden_dim=hidden_dim, l2_weight=l2_weight)
     else:
         raise ValueError(f"Unsupported classifier head type: '{type}'. "
                          f"Expected 'flat' or 'hierarchical'.")

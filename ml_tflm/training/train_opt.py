@@ -25,8 +25,16 @@ def objective(trial):
 
     with initialize(config_path="configs", version_base="1.1"):
         overrides = [
-            f"component/pooling_layer={trial.suggest_categorical('pooling_layer', ['SingleAttentionPooling', 'DualAttentionPooling'])}",
-            f"dataset.ablation={trial.suggest_categorical('ablation', [None, ['A1','A2'], ['T3','T4']])}",
+            #f"component.feature_extractor.eegnet.F1={trial.suggest_int('F1', 24, 36)}",
+            #f"component.feature_extractor.eegnet.D={trial.suggest_int('D', 1, 4, log=True)}",
+            #f"component.feature_extractor.eegnet.F2={trial.suggest_int('F2', 4, 16, log=True)}",
+            #f"component.pooling_layer.pool.hidden_dim={trial.suggest_int('pooling_dim', 8, 16)}",
+
+            #f"component.classifier_head.head.l2_weight={trial.suggest_float('head_l2', 1e-6, 1e-3, log=True):8f}",
+            #f"component.classifier_head.head.hidden_dim={trial.suggest_categorical('head_dim', [0, 4, 8])}",
+            f"component/pooling_layer={trial.suggest_categorical('pooling_layer', ['AblationPooling', 'AveragePooling', 'GatedAttentionPooling', 'LSTMAttentionPooling', 'SingleAttentionPooling', 'TCNGatedAttentionPooling', 'TCNHybridAttentionPooling'])}",
+            #f"component.pooling_layer.loss.lambda_entropy={trial.suggest_float('pool_lambda', 1e-4, 1e-1, log=True):8f}",
+
             "training.epochs=20",
             "training.save_ckpt=false",
             "training.k_fold=false",

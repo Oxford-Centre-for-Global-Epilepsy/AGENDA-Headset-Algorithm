@@ -1,0 +1,15 @@
+head:
+  type: flat
+  num_classes: 2
+  l2_weight: 1e-05
+
+loss:
+  _target_: ml_tflm.training.loss.BinaryLoss
+
+evaluator:
+  _target_: ml_tflm.training.metrics.metric_evaluator
+  label_config: null
+  prediction_caster: cast_prediction_binary
+
+model_target_lookup:
+  targets: labels

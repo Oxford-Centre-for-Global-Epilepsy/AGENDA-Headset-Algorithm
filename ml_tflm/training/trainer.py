@@ -6,6 +6,9 @@ import numpy as np
 
 from tqdm import tqdm
 
+# import warnings
+# warnings.filterwarnings("ignore", message="Gradients do not exist for variables.*")
+
 
 class Trainer:
     def __init__(self, model, loss_fn, attention_loss, optimizer, evaluator,
@@ -92,7 +95,7 @@ class Trainer:
         model_targets = {k: batch[v] for k, v in self.model_target_lookup.items()}
 
         with tf.GradientTape() as tape:
-            outputs = self.model(**model_inputs, use_attention=self.enable_attention, return_attn_weights=True, training=True)
+            outputs = self.model(**model_inputs, use_attention=self.enable_attention, return_attn_weights=self.attention_loss is not None, training=True)
             loss = self.loss_fn(y_pred=outputs, y_true=model_targets)
             loss += tf.add_n(self.model.losses)
 
@@ -125,11 +128,20 @@ class Trainer:
                     **model_inputs,
                     use_attention=self.enable_attention,
                     training=False,
-                    return_attn_weights=True,
+                    return_attn_weights=self.attention_loss is not None,
                     return_features=collect_outputs,
                 )
 
                 loss = self.loss_fn(y_pred=outputs, y_true=model_targets)
+
+                # === Add attention entropy regularization if applicable ===
+                if "attention_weights" in outputs and self.attention_loss is not None:
+                    entropy_penalty = self.attention_loss(
+                        y_true=model_targets["targets"],
+                        y_pred=outputs["attention_weights"]
+                    )
+                    loss += entropy_penalty
+
                 self.val_loss_metric.update_state(loss)
 
                 if collect_outputs:
@@ -218,25 +230,10 @@ class Trainer:
             print(f"Train Loss = {self.train_loss_metric.result():.4f}, "
                 f"Val Loss = {self.val_loss_metric.result():.4f}")
 
-            print("Val F1: {:.4f}, Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}".format(
-                metrics["f1"], metrics["accuracy"], metrics["precision"], metrics["recall"]
-            ))
+            # Printing Metrics
+            class_labels = ["neurotypical", "generalized", "left", "right"]
+            print_validation_results(metrics, class_labels=class_labels)
 
-            # Confusion matrix
-            if "confusion_matrix" in metrics:
-                print("\nConfusion Matrix:")
-                class_labels = ["neurotypical", "generalized", "left", "right"]
-                print_confusion_matrix(metrics["confusion_matrix"], class_labels)
-
-            # Attention stats
-            if "attention_entropy_mean" in metrics:
-                means = metrics["attention_entropy_mean"]
-                stds = metrics.get("attention_entropy_std", None)
-
-                for i, mean in enumerate(means):
-                    std = stds[i] if stds and i < len(stds) else 0.0
-                    print(f"Attention Head {i} — Entropy Mean: {mean:.4f}, Std: {std:.4f}")
-                
             # Save checkpoint
             if self.ckpt_manager and (epoch % self.ckpt_interval == 0):
                 save_path = self.ckpt_manager.save()
@@ -270,6 +267,47 @@ class Trainer:
 
         best_epoch = max(self.metric_history, key=lambda m: m.get("f1", -1))
         return best_epoch
+
+def print_validation_results(metrics, class_labels=None):
+    """
+    Print key validation results, including flat metrics, hierarchical metrics,
+    confusion matrix, and attention statistics.
+
+    Args:
+        metrics (dict): Output from evaluator.evaluate().
+        class_labels (list or None): Optional list of class label names for confusion matrix.
+    """
+    # --- Flat metrics ---
+    print("Val F1: {:.4f}, Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}".format(
+        metrics.get("f1", 0.0),
+        metrics.get("accuracy", 0.0),
+        metrics.get("precision", 0.0),
+        metrics.get("recall", 0.0),
+    ))
+
+    # --- Hierarchical metrics (if available) ---
+    for level in ["level1", "level2", "level3"]:
+        if f"{level}_f1" in metrics:
+            print(f"{level.capitalize()} — F1: {metrics[f'{level}_f1']:.4f}, "
+                  f"Acc: {metrics[f'{level}_acc']:.4f}, "
+                  f"Precision: {metrics[f'{level}_precision']:.4f}, "
+                  f"Recall: {metrics[f'{level}_recall']:.4f}")
+
+    # --- Confusion matrix ---
+    if "confusion_matrix" in metrics:
+        print("\nConfusion Matrix:")
+        if class_labels is None:
+            class_labels = ["class_0", "class_1", "class_2", "class_3"]
+        print_confusion_matrix(metrics["confusion_matrix"], class_labels)
+
+    # --- Attention entropy statistics ---
+    if "attention_entropy_mean" in metrics:
+        means = metrics["attention_entropy_mean"]
+        stds = metrics.get("attention_entropy_std", None)
+
+        for i, mean in enumerate(means):
+            std = stds[i] if stds and i < len(stds) else 0.0
+            print(f"Attention Head {i} — Entropy Mean: {mean:.4f}, Std: {std:.4f}")
 
 def print_weight_updates(old_weights_dict, new_weights_dict):
     print("Weight update norms:")

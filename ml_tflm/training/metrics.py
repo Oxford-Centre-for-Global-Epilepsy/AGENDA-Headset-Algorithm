@@ -1,6 +1,7 @@
 from ml_tflm.training.cast_prediction import cast_labels, CASTER_REGISTRY
 import numpy as np
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
+import re
 
 class metric_evaluator():
     def __init__(self, label_config, prediction_caster: str):
@@ -27,36 +28,51 @@ class metric_evaluator():
 
         # Load the caster function for predictions
         self.prediction_caster = CASTER_REGISTRY[prediction_caster]
+        self.binary_flag = bool(re.search(r"binary$", prediction_caster))
 
     def evaluate(self, preds, targets, ignore_index=-1):
-        """
-        Evaluates the predictions against the targets and computes both flat and hierarchical metrics.
+        if self.binary_flag:
+            return self.binary_eval(preds, targets, ignore_index)
+        else:
+            return self.quad_eval(preds, targets, ignore_index)
 
-        Args:
-            preds: list of dicts (model outputs for each batch)
-            targets: list of str or int ground-truth labels (flattened)
-            ignore_index: int, value in preds/targets to ignore (default: -1)
+    def binary_eval(self, preds, targets, ignore_index):
+        pred_indices = np.array(self.prediction_caster(preds))
+        target_indices = np.array([
+                                    0 if self.flat_index_map_internal[y] == 0 else 1
+                                    for y in targets.numpy()
+                                ])
 
-        Returns:
-            dict with macro F1, accuracy, precision, recall, confusion matrix, and hierarchical metrics
-        """
-        # ---- Flat metrics ----
-        pred_indices = np.array(self.prediction_caster(preds))  # shape [B]
+
+        valid_mask = (target_indices != ignore_index) & (pred_indices != ignore_index)
+        pred_valid = pred_indices[valid_mask]
+        target_valid = target_indices[valid_mask]
+
+        return {
+            "f1": f1_score(target_valid, pred_valid, average="binary", zero_division=0),
+            "accuracy": accuracy_score(target_valid, pred_valid),
+            "precision": precision_score(target_valid, pred_valid, average="binary", zero_division=0),
+            "recall": recall_score(target_valid, pred_valid, average="binary", zero_division=0),
+            "confusion_matrix": confusion_matrix(target_valid, pred_valid)
+        }
+
+    def quad_eval(self, preds, targets, ignore_index):
+        pred_indices = np.array(self.prediction_caster(preds))
         target_indices = np.array(cast_labels(targets, self.flat_index_map_internal))
 
         valid_mask = (target_indices != ignore_index) & (pred_indices != ignore_index)
-        pred_indices_valid = pred_indices[valid_mask]
-        target_indices_valid = target_indices[valid_mask]
+        pred_valid = pred_indices[valid_mask]
+        target_valid = target_indices[valid_mask]
 
         results = {
-            "f1": f1_score(target_indices_valid, pred_indices_valid, average="macro", zero_division=0),
-            "accuracy": accuracy_score(target_indices_valid, pred_indices_valid),
-            "precision": precision_score(target_indices_valid, pred_indices_valid, average="macro", zero_division=0),
-            "recall": recall_score(target_indices_valid, pred_indices_valid, average="macro", zero_division=0),
-            "confusion_matrix": confusion_matrix(target_indices_valid, pred_indices_valid)
+            "f1": f1_score(target_valid, pred_valid, average="macro", zero_division=0),
+            "accuracy": accuracy_score(target_valid, pred_valid),
+            "precision": precision_score(target_valid, pred_valid, average="macro", zero_division=0),
+            "recall": recall_score(target_valid, pred_valid, average="macro", zero_division=0),
+            "confusion_matrix": confusion_matrix(target_valid, pred_valid)
         }
 
-        if len(pred_indices_valid) == 0:
+        if len(pred_valid) == 0:
             return results
 
         # ---- Hierarchical metrics ----
@@ -64,15 +80,12 @@ class metric_evaluator():
             pred_l1, pred_l2, pred_l3 = map(np.array, self.prediction_caster(preds, return_hierarchical=True))
         except Exception:
             print("Hierarchical prediction not supported by caster")
-            return results  # fallback if caster doesn't support hierarchical
+            results["hierarchical_skipped"] = True
+            return results
 
-        # Map ground-truth flat label to hierarchical levels
-        # flat labels: 0=neurotypical, 1=generalized, 2=left, 3=right
         t_l1 = np.where(target_indices == 0, 0, 1)  # neurotypical vs epileptic
         t_l2 = np.where(target_indices == 1, 1, 0)  # generalized vs focal
         t_l3 = np.where(target_indices == 3, 1, 0)  # right vs left
-
-        hierarchical_metrics = {}
 
         def compute_level_metrics(y_true, y_pred, mask, prefix):
             if np.sum(mask) == 0:
@@ -83,17 +96,14 @@ class metric_evaluator():
                     f"{prefix}_precision": None,
                     f"{prefix}_recall": None
                 }
-            f1 = f1_score(y_true[mask], y_pred[mask], average="macro", zero_division=0)
-            acc = accuracy_score(y_true[mask], y_pred[mask])
-            prec = precision_score(y_true[mask], y_pred[mask], average="macro", zero_division=0)
-            rec = recall_score(y_true[mask], y_pred[mask], average="macro", zero_division=0)
             return {
-                f"{prefix}_f1": f1,
-                f"{prefix}_acc": acc,
-                f"{prefix}_precision": prec,
-                f"{prefix}_recall": rec,
+                f"{prefix}_f1": f1_score(y_true[mask], y_pred[mask], average="macro", zero_division=0),
+                f"{prefix}_acc": accuracy_score(y_true[mask], y_pred[mask]),
+                f"{prefix}_precision": precision_score(y_true[mask], y_pred[mask], average="macro", zero_division=0),
+                f"{prefix}_recall": recall_score(y_true[mask], y_pred[mask], average="macro", zero_division=0),
             }
 
+        hierarchical_metrics = {}
         mask_l1 = target_indices != ignore_index
         hierarchical_metrics.update(compute_level_metrics(t_l1, pred_l1, mask_l1, "level1"))
 

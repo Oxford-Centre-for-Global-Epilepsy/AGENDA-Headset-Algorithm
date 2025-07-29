@@ -44,7 +44,6 @@ def cast_prediction_flat(output_list, return_hierarchical=False):
 
     return level1_pred, level2_pred, level3_pred
 
-
 def cast_prediction_hierarchical(predictions, return_hierarchical=False):
     """
     Converts hierarchical model logits into compressed 4-class flat predictions:
@@ -75,9 +74,9 @@ def cast_prediction_hierarchical(predictions, return_hierarchical=False):
         level2_logits = predictions["level2_logits"]
         level3_logits = predictions["level3_logits"]
 
-    level1_pred = tf.argmax(level1_logits, axis=1, output_type=tf.int32)
-    level2_pred = tf.argmax(level2_logits, axis=1, output_type=tf.int32)
-    level3_pred = tf.argmax(level3_logits, axis=1, output_type=tf.int32)
+    level1_pred = predict_from_logits(level1_logits)
+    level2_pred = predict_from_logits(level2_logits)
+    level3_pred = predict_from_logits(level3_logits)
 
     if return_hierarchical:
         return level1_pred, level2_pred, level3_pred
@@ -98,6 +97,46 @@ def cast_prediction_hierarchical(predictions, return_hierarchical=False):
 
     return flat_class_ids
 
+def cast_prediction_binary(output_list, return_hierarchical=False):
+    """
+    Casts a list of model outputs to binary predicted class indices.
+
+    Args:
+        output_list (list[dict]): Each dict contains key "logits" (tf.Tensor of shape [B, 2])
+        return_hierarchical (bool): Ignored; always returns flat binary predictions.
+
+    Returns:
+        tf.Tensor: Predicted binary class indices (int32), shape [B]
+    """
+    logits_batch = tf.concat([entry["logits"] for entry in output_list], axis=0)
+    pred = tf.argmax(logits_batch, axis=1, output_type=tf.int32)
+    return pred
+
+def predict_from_logits(logits, threshold=0.5):
+    """
+    Converts raw logits to predicted class labels.
+
+    Supports:
+    - [B, 2]: softmax-style logits → argmax
+    - [B, 1] or [B]: binary logits → sigmoid + threshold
+
+    Args:
+        logits: Tensor of shape [B], [B, 1], or [B, 2]
+        threshold: Threshold to use for binary case (default 0.5)
+
+    Returns:
+        Tensor of shape [B] with predicted class labels (int32)
+    """
+    shape = logits.shape
+
+    if shape.rank == 2 and shape[-1] == 2:
+        return tf.argmax(logits, axis=1, output_type=tf.int32)
+
+    if (shape.rank == 2 and shape[-1] == 1) or shape.rank == 1:
+        probs = tf.sigmoid(tf.squeeze(logits, axis=-1) if shape.rank == 2 else logits)
+        return tf.cast(probs > threshold, tf.int32)
+
+    raise ValueError(f"Unsupported logits shape: {shape}")
 
 def cast_labels(labels, internal_index_map):
     """
@@ -120,4 +159,5 @@ def cast_labels(labels, internal_index_map):
 CASTER_REGISTRY = {
     "cast_prediction_flat": cast_prediction_flat,
     "cast_prediction_hierarchical": cast_prediction_hierarchical,
+    "cast_prediction_binary": cast_prediction_binary
 }

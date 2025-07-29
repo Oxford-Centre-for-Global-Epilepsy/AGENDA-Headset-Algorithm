@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from ml_tflm.models_tf.feature_extractor import EEGNet
-from ml_tflm.models_tf.attention_pooling import MultiHeadAttentionPooling
+from ml_tflm.models_tf.attention_pooling import GetPoolingLayer
 from ml_tflm.models_tf.classification_head import GetClassifierHead
 
 class EEGNetStack(tf.keras.Model):
@@ -28,7 +28,7 @@ class EEGNetStack(tf.keras.Model):
         if pool_args:
             dummy_input = tf.zeros([1, eegnet_args['num_channels'], eegnet_args['num_samples'], 1])
             feature_dim = self.eegnet(dummy_input, training=False).shape[-1]
-            self.pool = MultiHeadAttentionPooling(input_dim=feature_dim, **pool_args)
+            self.pool = GetPoolingLayer(input_dim=feature_dim, **pool_args)
         else:
             self.pool = None
 

@@ -1,10 +1,10 @@
 defaults:
-  - dataset: sample01
+  - dataset: sample_balanced
   - optimizer: adam
   - training: default
   - component/feature_extractor: EEGNet
-  - component/pooling_layer: SingleAttentionPooling
-  - component/classifier_head: Flat
+  - component/pooling_layer: GRUPooling
+  - component/classifier_head: Binary
   - _self_
 
 hydra:

@@ -1,12 +1,13 @@
 eegnet:
-  F1: 16
+  F1: 32
   D: 2
   F2: 4
-  dropout_rate: 0.5
+  dropout_rate: 0.3
   bottleneck_dim: 0
   kernel_length: 64
   temporal_type: 'vanilla'
-  activation: elu  # resolve in Python
+  activation: 'hard_swish'  # resolve in Python
+  l2_weight: 1e-07
 
 model_input_lookup:
   x: data

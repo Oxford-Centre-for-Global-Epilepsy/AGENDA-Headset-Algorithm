@@ -87,12 +87,6 @@ class StructureAwareLoss(tf.keras.losses.Loss):
         if self.clip_value is not None:
             logits = tf.clip_by_value(logits, clip_value_min=-self.clip_value, clip_value_max=self.clip_value) # Clip logits to preserve stability at confident predictions
         log_probs = tf.nn.log_softmax(logits, axis=1)  # shape [B, C]
-
-        '''
-        tf.print("Soft Target Vectors:", soft_targets, summarize=-1)
-        probs = tf.nn.softmax(logits, axis=1)
-        tf.print("Softmax probabilities:", probs, summarize=-1)
-        '''
         
         # Step 4: KL divergence between soft targets and predicted log-probs
         kl_div = -tf.reduce_sum(soft_targets * log_probs, axis=1)  # shape [B]
@@ -289,8 +283,72 @@ def masked_cross_entropy(logits, targets, mask, class_weights=None):
         compute_loss
     )
 
+def masked_binary_cross_entropy(logits, targets, mask, class_weights=None):
+    mask = tf.cast(mask, dtype=tf.bool)
+    mask_sum = tf.reduce_sum(tf.cast(mask, tf.float32))
+
+    masked_logits = tf.boolean_mask(logits, mask)
+    masked_targets = tf.cast(tf.boolean_mask(targets, mask), tf.float32)
+
+    if len(masked_logits.shape) > 1 and masked_logits.shape[-1] == 1:
+        masked_logits = tf.squeeze(masked_logits, axis=-1)
+
+    if class_weights is not None:
+        class_weights = tf.convert_to_tensor(class_weights, dtype=tf.float32)
+
+    def compute_loss():
+        loss = tf.keras.losses.binary_crossentropy(
+            masked_targets, masked_logits, from_logits=True
+        )
+
+        if class_weights is not None:
+            weights = tf.where(masked_targets == 1.0, class_weights[1], class_weights[0])
+            return tf.reduce_mean(loss * weights)
+        else:
+            return tf.reduce_mean(loss)
+
+    return tf.cond(
+        tf.equal(mask_sum, 0.0),
+        lambda: tf.constant(0.0, dtype=tf.float32),
+        compute_loss
+    )
+
+def get_masked_loss(logits, targets, mask, class_weights=None):
+    """
+    Determines the appropriate masked loss based on static logits shape.
+    Supports:
+    - [B]: binary logits
+    - [B, 1]: binary logits
+    - [B, 2]: softmax logits
+    """
+    shape = logits.shape
+
+    if shape.rank is None:
+        raise ValueError("Logits must have a known rank.")
+
+    if shape.rank == 1:
+        return masked_binary_cross_entropy(logits, targets, mask, class_weights)
+
+    if shape.rank == 2:
+        if shape[-1] == 1:
+            return masked_binary_cross_entropy(logits, targets, mask, class_weights)
+        elif shape[-1] == 2:
+            return masked_cross_entropy(logits, targets, mask, class_weights)
+        else:
+            raise ValueError(f"Unsupported logits shape: {shape}")
+    
+    raise ValueError(f"Unsupported logits rank: {shape.rank}")
+
 class HierarchicalLoss(tf.keras.losses.Loss):
-    def __init__(self, weights=(1.0, 1.0, 1.0), level1_weights=None, level2_weights=None, level3_weights=None, label_config=None, class_histogram=None):
+    def __init__(
+        self,
+        weights=(1.0, 1.0, 1.0),
+        level1_weights=None,
+        level2_weights=None,
+        level3_weights=None,
+        label_config=None,
+        class_histogram=None,
+    ):
         super().__init__()
         self.weights = weights
         self.level1_weights = level1_weights
@@ -298,41 +356,26 @@ class HierarchicalLoss(tf.keras.losses.Loss):
         self.level3_weights = level3_weights
 
     def call(self, y_true, y_pred):
-        """
-        Args:
-            y_true: A dict with:
-                'targets': Tensor of shape [B, 3]
-                'label_mask': Tensor of shape [B, 3] (1 = valid, 0 = invalid)
-            y_pred: A dict with:
-                'level1_logits': [B, 2],
-                'level2_logits': [B, 2],
-                'level3_logits': [B, 2]
-        Returns:
-            Scalar tensor loss
-        """
         targets = y_true['targets']
         label_mask = tf.cast(y_true['label_mask'], dtype=tf.bool)
 
-        # Level 1: already binary
-        loss1 = masked_cross_entropy(
+        loss1 = get_masked_loss(
             y_pred["level1_logits"],
             targets[:, 0],
             label_mask[:, 0],
             class_weights=self.level1_weights
         )
 
-        # Level 2: remap 2=focal → 0, 3=generalized → 1
         level2_target = tf.where(targets[:, 1] == 3, 1, 0)
-        loss2 = masked_cross_entropy(
+        loss2 = get_masked_loss(
             y_pred["level2_logits"],
             level2_target,
             label_mask[:, 1],
             class_weights=self.level2_weights
         )
 
-        # Level 3: remap 4=left → 0, 5=right → 1
         level3_target = tf.where(targets[:, 2] == 5, 1, 0)
-        loss3 = masked_cross_entropy(
+        loss3 = get_masked_loss(
             y_pred["level3_logits"],
             level3_target,
             label_mask[:, 2],
@@ -412,6 +455,26 @@ class ConditionalEntropyLoss(tf.keras.losses.Loss):
         
         # Return batch mean
         return self.lambda_entropy * tf.reduce_sum(per_sample_entropy)
+
+class BinaryLoss(tf.keras.losses.Loss):
+    def __init__(self, label_config=None, class_histogram=None):
+        """
+        Binary classification loss for Level 1 (neurotypical vs epileptic),
+        using SparseCategoricalCrossentropy.
+        """
+        super().__init__()
+        self.loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
+            from_logits=True, reduction=tf.keras.losses.Reduction.NONE
+        )
+
+    def call(self, y_true, y_pred):
+        targets = y_true["targets"][:, 0]             # shape [B]
+        logits = y_pred["logits"]              # shape [B, 2]
+
+        # Compute masked SparseCategoricalCrossentropy loss
+        loss = self.loss_fn(targets, logits)  # shape [B]
+
+        return tf.reduce_mean(loss)
 
 if __name__ == "__main__":
     """

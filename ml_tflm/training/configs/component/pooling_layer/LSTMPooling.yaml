@@ -1,0 +1,3 @@
+pool:
+  pool: LSTM
+  lstm_units: 16

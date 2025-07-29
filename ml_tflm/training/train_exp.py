@@ -47,8 +47,13 @@ def main(cfg: DictConfig):
 
     print(" -> Label Map Loaded")
 
+    if cfg.training.internal_label_cap_keys and cfg.training.internal_label_cap_values:
+        internal_label_cap = dict(zip(cfg.training.internal_label_cap_keys, cfg.training.internal_label_cap_values))
+    else:
+        internal_label_cap = None
+
     # --- Load dataset ---
-    train_val_sets, test_dataset, label_histograms = utils.load_eeg_datasets_split(
+    train_val_sets, test_dataset, label_histograms = utils.prepare_eeg_datasets(
         h5_file_path=cfg.dataset.h5_path,
         dataset_name=cfg.dataset.name,
         label_config=label_config,
@@ -56,6 +61,8 @@ def main(cfg: DictConfig):
         val_frac=cfg.training.val_frac,
         test_frac=cfg.training.test_frac,
         k_fold=cfg.training.k_fold,
+        stratify=cfg.training.stratify,
+        internal_label_cap=internal_label_cap,
         batch_size=cfg.training.batch_sz,
         mirror_flag=cfg.training.mirror_flag,
     )
@@ -73,10 +80,13 @@ def main(cfg: DictConfig):
         val_dataset = train_val_set[1]
 
         # --- Prepare class histogram and loss ---
-        class_hist = label_histograms[fold_idx]
-
+        if cfg.training.class_balance:
+            class_hist = label_histograms[fold_idx]
+        else:
+            class_hist = None
+        
         loss_fn = instantiate(cfg.component.classifier_head.loss, label_config=label_config, class_histogram=class_hist)
-        entropy_loss = instantiate(cfg.component.pooling_layer.loss)
+        entropy_loss = instantiate(cfg.component.pooling_layer.loss) if "loss" in cfg.component.pooling_layer else None
 
         # --- Get EEGNet shape info ---
         data_spec = train_dataset.element_spec["data"]
@@ -89,7 +99,8 @@ def main(cfg: DictConfig):
         eegnet_args["activation"] = utils.get_activation(eegnet_args["activation"])
 
         pooling_args = dict(cfg.component.pooling_layer.pool)
-        pooling_args["activation"] = getattr(tf.nn, pooling_args["activation"])
+        if "activation" in pooling_args:
+            pooling_args["activation"] = getattr(tf.nn, pooling_args["activation"])
 
         head_args = dict(cfg.component.classifier_head.head)
 
