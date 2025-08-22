@@ -1,8 +1,3 @@
-"""
-This script is intended only for converting .ckpt files into full models. 
-For the remaining conversion steps, please refer to the ~/model_conversion_factory directory.
-"""
-
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -10,13 +5,11 @@ import tensorflow as tf
 import ml_tflm.training.train_utils as utils
 from ml_tflm.models_tf.classifier_QAT import EEGNetFlatClassifierQAT
 
+"""
+Apologies for the messy implementation, but for changing the intended model to be converted, check line 70 and 71
+"""
 
 def loadTrainedModel(save=False):
-    """
-    This script is intended only for converting .ckpt files into full models.
-    For the rest of the conversion process, please refer to the ~/conversion directory.
-    """
-
     # --- Load label config (used for consistent model construction) ---
     label_config = utils.load_label_config("ml_tflm/training/label_map.JSON")
 
