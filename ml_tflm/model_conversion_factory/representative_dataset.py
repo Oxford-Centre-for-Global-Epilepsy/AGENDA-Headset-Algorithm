@@ -1,7 +1,7 @@
 import tensorflow as tf
 import random
 import numpy as np
-from ml_tflm.dataset.eeg_dataset import EEGRecordingTFGenerator
+from ml_tflm.dataset.eeg_dataset_rewrite import EEGRecordingDatasetTF
 from ml_tflm.training.train_utils import load_label_config
 
 class EEGRepresentativeDataset:
@@ -11,27 +11,18 @@ class EEGRepresentativeDataset:
         total_epochs: total number of individual epochs to collect
         """
         self.epochs = []
-        all_batches = list(tf_dataset)
-        num_subjects = len(all_batches)
 
-        max_available_epochs = num_subjects * epochs_per_subject
-        if max_available_epochs >= total_epochs:
-            # Limit the number of subjects used
-            required_subjects = (total_epochs + epochs_per_subject - 1) // epochs_per_subject
-            selected_batches = random.sample(all_batches, required_subjects)
-            n_epochs_per_subject = epochs_per_subject
-        else:
-            # Use all available subjects and distribute needed epochs evenly
-            selected_batches = all_batches
-            n_epochs_per_subject = (total_epochs + num_subjects - 1) // num_subjects
+        # Select the subjects from all
+        required_subjects = (total_epochs + epochs_per_subject - 1) // epochs_per_subject
+        selected_subjects = random.sample(range(len(tf_dataset)), required_subjects)
 
-        for batch in selected_batches:
+        for subject in selected_subjects:
             if len(self.epochs) >= total_epochs:
                 break
 
-            full_data = batch["data"].numpy()[0]  # [E, C, T]
+            full_data = tf_dataset[subject]["data"]
             E = full_data.shape[0]
-            n = min(E, n_epochs_per_subject, total_epochs - len(self.epochs))
+            n = min(E, epochs_per_subject, total_epochs - len(self.epochs))
             indices = random.sample(range(E), n)
 
             for idx in indices:
@@ -54,21 +45,23 @@ class EEGRepresentativeDataset:
     
 def get_rep_dataset(h5_file_path, dataset_name, total_epochs=100, epochs_per_subject=3):
     label_config = load_label_config("ml_tflm/training/label_map.JSON")
-    tf_dataset = EEGRecordingTFGenerator(
+    tf_dataset = EEGRecordingDatasetTF(
         h5_file_path=h5_file_path,
         dataset_name=dataset_name,
-        label_config=label_config
-    ).as_dataset(batch_size=1, shuffle=True)
+        label_config=label_config,
+        omit_channels=["A1","A2", "Fz", "Pz", "Cz"],
+        chunk_size=256
+    )
     return EEGRepresentativeDataset(tf_dataset, total_epochs, epochs_per_subject)
-    
+
 if __name__ == "__main__":
     # Construct the representative dataset
-    rep_dataset = get_rep_dataset(h5_file_path="ml_tflm/dataset/sample_data/anyu_dataset_south_africa_monopolar_standard_10_20.h5",
-                                  dataset_name="anyu_dataset_south_africa_monopolar_standard_10_20",
-                                  total_epochs=100, epochs_per_subject=3)
+    rep_dataset = get_rep_dataset(h5_file_path="ml_tflm/dataset/agenda_data_23_bp45_tr05/merged_south_africa_monopolar_standard_10_20.h5",
+                                  dataset_name="combined_south_africa_monopolar_standard_10_20",
+                                  total_epochs=100, epochs_per_subject=2)
 
     # Verify shape and dtype of generated samples
     for i, sample in enumerate(rep_dataset.generator()):
-        print(f"Epoch {i+1}: shape={sample.shape}, dtype={sample.dtype}")
+        print(f"Epoch {i+1}: shape={sample['input_1'].shape}, dtype={sample['input_1'].dtype}")
         if i >= 4:
             break

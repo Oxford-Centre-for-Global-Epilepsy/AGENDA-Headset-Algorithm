@@ -3,55 +3,66 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import tensorflow as tf
 import tensorflow_model_optimization as tfmot
+from tensorflow_model_optimization.quantization.keras import quantize_annotate_layer as QAnnotate
 
 import logging
 tf.get_logger().setLevel(logging.ERROR)
+
+QK = tfmot.quantization.keras
+Quantizer = tfmot.quantization.keras.quantizers.MovingAverageQuantizer
 
 """
 MESSAGE: Due to behavior of Tensorflow NOT UNDERSTOOD YET, all model components are contained in this folder
 """
 
+# ##################
+# ##### CUSTOM #####
+# ##################
+
+class HardSwishQuantizeConfig(QK.QuantizeConfig):
+    """Quantize the OUTPUT of HardSwish only (8-bit activations)."""
+    def get_weights_and_quantizers(self, layer): return []   # no weights in HardSwish
+    def get_activations_and_quantizers(self, layer): return []
+    def set_quantize_weights(self, layer, quantize_weights): pass
+    def set_quantize_activations(self, layer, quantize_activations): pass
+    def get_output_quantizers(self, layer):
+        # IMPORTANT: keep it simple; no 'name' arg or extras
+        return [Quantizer(
+            num_bits=8, per_axis=False, symmetric=False, narrow_range=False
+        )]
+    def get_config(self): return {}
+
+@tf.keras.utils.register_keras_serializable(package="Compat")
+class HardSwish(tf.keras.layers.Layer):
+    def call(self, x):
+        # y = x * relu6(x + 3) * (1/6), no division op
+        c3   = tf.cast(3.0,     x.dtype)
+        c1_6 = tf.cast(1.0/6.0, x.dtype)
+        return x * tf.nn.relu6(x + c3) * c1_6
+
+    def get_config(self):
+        return {**super().get_config()}
+
+# ##################
+# ##### EEGNET #####
+# ##################
+
 def get_eegnet_model(
-    num_channels = 21, num_samples = 256,
-    dropout_rate = 0.5, F1 = 8, D = 2, F2 = 16, 
-    kernel_length = 64, activation = tf.nn.elu
+    num_channels=16, num_samples=256,
+    dropout_rate=0.5, F1=16, D=2, F2=4,
+    kernel_length=64
 ):
-    """
-    Functional EEGNet model for feature extraction.
-
-    Parameters
-    ----------
-    input_shape : tuple
-        Shape of input (channels, samples), not including batch or channel-last dim.
-    dropout_rate : float
-        Dropout rate.
-    F1 : int
-        Number of temporal filters.
-    D : int
-        Depth multiplier for spatial filters.
-    F2 : int
-        Number of pointwise filters.
-    kernel_length : int
-        Temporal kernel length.
-    activation : callable
-        Activation function.
-
-    Returns
-    -------
-    tf.keras.Model
-        Keras functional model.
-    """
-    inputs = tf.keras.Input(shape=(num_channels, num_samples, 1))  # shape: [B, C, T, 1]
+    inputs = tf.keras.Input(shape=(num_channels, num_samples, 1))  # [B, C, T, 1]
 
     # Block 1: Temporal Conv
     x = tf.keras.layers.Conv2D(F1, (1, kernel_length), padding='same', use_bias=False)(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
-    temporal_features = x
+    temporal_features = x  # (kept if you use elsewhere)
 
     # Block 2: Depthwise Spatial Conv
     x = tf.keras.layers.DepthwiseConv2D((num_channels, 1), depth_multiplier=D, use_bias=False)(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Activation(activation)(x)
+    x = QAnnotate(HardSwish(name="spatial_hswish"), quantize_config=HardSwishQuantizeConfig())(x)
     x = tf.keras.layers.AveragePooling2D((1, 4))(x)
     x = tf.keras.layers.Dropout(dropout_rate)(x)
     spatial_features = x
@@ -59,7 +70,7 @@ def get_eegnet_model(
     # Block 3: Separable Conv
     x = tf.keras.layers.SeparableConv2D(F2, (1, 16), padding='same', use_bias=False)(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Activation(activation)(x)
+    x = QAnnotate(HardSwish(name="sep_hswish"), quantize_config=HardSwishQuantizeConfig())(x)
     x = tf.keras.layers.AveragePooling2D((1, 8))(x)
     x = tf.keras.layers.Dropout(dropout_rate)(x)
     final_features = x
@@ -70,10 +81,38 @@ def get_eegnet_model(
     return tf.keras.Model(inputs=inputs, outputs=features, name="EEGNet_Functional")
 
 def get_eegnet_qat(eegargs):
-    model = get_eegnet_model(**eegargs)
+    base = get_eegnet_model(**eegargs)
 
-    quantise_model = tfmot.quantization.keras.quantize_model
-    return quantise_model(model)
+    registry = QK.default_8bit.Default8BitQuantizeRegistry()
+
+    # Clone-time annotator: annotate supported layers; keep existing QuantizeAnnotate as-is
+    def _annotate_or_keep(layer):
+        # Keep your already-annotated HardSwish markers untouched
+        if layer.__class__.__name__ == 'QuantizeAnnotate':
+            return layer
+        # Annotate default-quantizable layers (Conv/Depthwise/Separable/Dense/ReLU, etc.)
+        try:
+            if registry.supports(layer):
+                # ensure layer has a name (Keras 3 sometimes leaves it blank)
+                if not getattr(layer, "name", None):
+                    layer._name = layer.__class__.__name__.lower()
+                return QK.quantize_annotate_layer(layer)
+        except Exception:
+            pass  # leave unsupported/no-op layers as-is (Pooling/Dropout/Flatten/etc.)
+        return layer
+
+    with QK.quantize_scope({
+        'HardSwish': HardSwish,
+        'HardSwishQuantizeConfig': HardSwishQuantizeConfig
+    }):
+        annotated = tf.keras.models.clone_model(base, clone_function=_annotate_or_keep)
+        qat_model = QK.quantize_apply(annotated)
+
+    return qat_model
+
+# ################
+# ##### POOL #####
+# ################
 
 @tf.keras.utils.register_keras_serializable()
 class AttentionPooling(tf.keras.layers.Layer):
@@ -147,11 +186,83 @@ def get_attention_classifier(feature_dim, pooling_args, num_classes=4, name="Att
     # Create model with both inputs
     return tf.keras.Model(inputs=[feature_input, mask_input], outputs=logits, name=name)
 
+@tf.keras.utils.register_keras_serializable()
+class AveragePooling(tf.keras.layers.Layer):
+    """
+    Simple average pooling over epochs, mask-aware.
+
+    Parameters
+    ----------
+    None
+        (No trainable parameters; pure reduction)
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, x, mask=None):
+        """
+        x:    [B, E, D]  feature sequence
+        mask: [B, E]     boolean mask (True = keep, False = ignore)
+        """
+        if mask is not None:
+            # Cast mask to float32 for multiplication
+            mask_f = tf.cast(mask, tf.float32)  # [B, E]
+            mask_f_exp = tf.expand_dims(mask_f, axis=-1)  # [B, E, 1]
+            x_masked = x * mask_f_exp
+
+            sum_vec = tf.reduce_sum(x_masked, axis=1)  # [B, D]
+            count_vec = tf.reduce_sum(mask_f, axis=1, keepdims=True)  # [B, 1]
+            pooled = sum_vec / tf.maximum(count_vec, 1.0)  # avoid div-by-zero
+        else:
+            pooled = tf.reduce_mean(x, axis=1)  # [B, D]
+        return pooled
+
+    def get_config(self):
+        return super().get_config()
+
+def get_average_pooling_model(feature_dim, name="AveragePoolingModel"):
+    """
+    Create a Keras Functional model that accepts feature sequence and optional mask,
+    returning only the pooled vector (no classifier).
+    """
+    feature_input = tf.keras.Input(shape=(None, feature_dim), name="feature_sequence")  # [B, E, D]
+    mask_input = tf.keras.Input(shape=(None,), dtype=tf.bool, name="attention_mask")    # [B, E]
+
+    pooling_layer = AveragePooling()
+    pooled_output = pooling_layer(feature_input, mask=mask_input)
+
+    return tf.keras.Model(inputs=[feature_input, mask_input], outputs=pooled_output, name=name)
+
+# ################
+# ##### HEAD #####
+# ################
+
+def get_flat_classifier_head(num_classes=4, l2_weight=1e-5):
+    return tf.keras.Sequential([
+        tf.keras.layers.Dense(
+            num_classes,
+            activation=None,  # logits
+            kernel_regularizer=tf.keras.regularizers.l2(l2_weight),
+            name="flat_classifier_dense"
+        )
+    ], name="flat_classifier_head")
+
+def get_head_qat(headargs, feature_dim):
+    # Option A: build Sequential then quantize
+    model = get_flat_classifier_head(**headargs)   # your Sequential(Dense)
+    model.build((None, feature_dim))               # make it "built"
+
+    quantise_model = tfmot.quantization.keras.quantize_model
+    return quantise_model(model)
+
+# #################
+# ##### MODEL #####
+# #################
+
 class EEGNetFlatClassifierQAT(tf.keras.Model):
     def __init__(self,
                  eegnet_args,
-                 pooling_args,
-                 num_classes=4):
+                 head_args):
         """
         EEGNet-based classifier using a single softmax over 4 valid classes.
 
@@ -161,80 +272,71 @@ class EEGNetFlatClassifierQAT(tf.keras.Model):
             num_classes (int): number of valid hierarchical class combinations
         """
         super().__init__()
-        pooling_args = pooling_args or {}
-
         # Instantiate and store quantized feature extractor
-        self.feature_extractor = get_eegnet_qat(eegargs=eegnet_args)
+        self.eegnet = get_eegnet_qat(eegargs=eegnet_args)
 
         # Probe feature dim by running dummy input
         dummy_input = tf.zeros([1, eegnet_args['num_channels'], eegnet_args['num_samples'], 1])
-        feature_dim = self.feature_extractor(dummy_input).shape[-1]
+        feature_dim = self.eegnet(dummy_input).shape[-1]
 
-        # Define attention pooling + classifier head as a functional model
-        self.attention_classifier = get_attention_classifier(
-            feature_dim=feature_dim,
-            pooling_args=pooling_args,
-            num_classes=num_classes
-        )
+        # Define pooling + classifier head
+        self.pool = get_average_pooling_model(feature_dim)
 
-    def call(self, x, attention_mask=None, return_attn_weights=False, return_features=False, training=False):
+        # self.classifier = get_head_qat(head_args, feature_dim)
+        self.classifier = get_flat_classifier_head(**head_args)
+        self.classifier.build((None, feature_dim))
+
+    def call(self, x, attention_mask=None, use_attention=None, return_attn_weights=None, return_features=None, training=False):
         """
         Args:
-            x: [B, E, C, T]
-            attention_mask: [B, E]
-            return_attn_weights: if True, returns attention weights
-            return_features: if True, returns pooled features
+            x: Tensor [B, E, C, T]
+            attention_mask: optional bool mask [B, E]
 
         Returns:
-            dict with logits and optional weights/features
+            {"logits": [B, num_classes]}
         """
-        B, E, C, T = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], tf.shape(x)[3]
-        x = tf.reshape(x, [B * E, C, T, 1])  # [B*E, C, T, 1]
+        B = tf.shape(x)[0]
+        E = tf.shape(x)[1]
+        C = tf.shape(x)[2]
+        T = tf.shape(x)[3]
 
-        # Pass reshaped input into feature extractor
-        features = self.feature_extractor(x, training=training)  # [B*E, D]
+        # 1) Flatten epochs -> per-epoch features
+        x_flat = tf.reshape(x, [B * E, C, T, 1])                     # [B*E, C, T, 1]
+        feats  = self.eegnet(x_flat, training=training)    # [B*E, D]
 
-        # Reshape the feature extractor output
-        D = tf.shape(features)[-1]
-        features = tf.reshape(features, [B, E, D])  # [B, E, D]
+        # 2) Restore [B, E, D]
+        D = tf.shape(feats)[-1]
+        feats = tf.reshape(feats, [B, E, D])                          # [B, E, D]
 
-        # Forward pass through attention-classifier head
+        # 3) Pool over epochs (default: all valid)
         if attention_mask is None:
-            B = tf.shape(features)[0]
-            E = tf.shape(features)[1]
             attention_mask = tf.ones([B, E], dtype=tf.bool)
 
-        logits = self.attention_classifier([features, attention_mask], training=training)
+        pooled = self.pool([feats, attention_mask], training=False)   # [B, D]
 
+        # 4) Head -> logits
+        logits = self.classifier(pooled, training=training)                 # [B, num_classes]
 
-        out = {"logits": logits}
-        if return_attn_weights:
-            weights = self.attention_classifier.get_layer("attention_pooling").last_attention_weights
-            out["attention_weights"] = weights
-        if return_features:
-            out["features"] = features  # or pooled, if needed
-        return out
+        return {"logits": logits}
 
 
 if __name__ == "__main__":
     eegnet_args = {
-        "num_channels": 21,
-        "num_samples": 256,
-        "F1": 8,
+        "num_channels": 16,
+        "num_samples": 128,
+        "F1": 16,
         "D": 2,
-        "F2": 16,
+        "F2": 4,
         "dropout_rate": 0.25,
         "kernel_length": 64,
-        "activation": tf.nn.relu
     }
 
-    pooling_args = {
-        "hidden_dim": 64,
-        "activation": tf.nn.tanh
+    head_args = {
+        "num_classes": 2,
+        "l2_weight": 1e-5
     }
 
-    EEGNetFlatClassifierQAT(eegnet_args=eegnet_args,
-                            pooling_args=pooling_args,
-                            num_classes=4)
-    
+    model = EEGNetFlatClassifierQAT(eegnet_args=eegnet_args,
+                            head_args=head_args)
+
     print("Quantisation Successful!")

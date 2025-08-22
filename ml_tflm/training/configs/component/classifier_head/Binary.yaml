@@ -1,7 +1,7 @@
 head:
   type: flat
   num_classes: 2
-  l2_weight: 1e-05
+  l2_weight: 0.0
 
 loss:
   _target_: ml_tflm.training.loss.BinaryLoss
@@ -13,3 +13,4 @@ evaluator:
 
 model_target_lookup:
   targets: labels
+  entropy_targets: internal_label

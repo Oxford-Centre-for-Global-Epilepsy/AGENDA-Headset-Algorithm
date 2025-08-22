@@ -1,11 +1,13 @@
 pool:
-  scorer: MLP
-  hidden_dim: 16
-  activation: tanh  # resolve in Python
+  pool: TRANSFORMER
+  ff_dim: 16
   num_heads: 1
+  dropout: 0.5
+  num_blocks: 1
+
 
 loss:
   _target_: ml_tflm.training.loss.ConditionalEntropyLoss
 
   label_to_heads: {3: [0], 4: [0], 5: [0]}
-  lambda_entropy: 0.004
+  lambda_entropy: 0.0

@@ -277,12 +277,14 @@ SCORER_REGISTRY = {
 def GetPoolingLayer(pool='ATTN', **pool_kwargs):
     return POOLING_REGISTRY[pool](**pool_kwargs)
 
-from ml_tflm.models_tf.experimental_pooling import LSTMPooling, GRUPooling
+from ml_tflm.models_tf.experimental_pooling import LSTMPooling, GRUPooling, ConformerPooling, TransformerCLSPooling
 
 POOLING_REGISTRY = {
     "ATTN": MultiHeadAttentionPooling,
     "LSTM": LSTMPooling,
-    "GRU":GRUPooling
+    "GRU":GRUPooling,
+    "CONFORMER": ConformerPooling,
+    "TRANSFORMER": TransformerCLSPooling
 }
 
 if __name__ == "__main__":

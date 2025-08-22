@@ -1,0 +1,7 @@
+pool:
+  pool: CONFORMER
+  ff_dim: 0             # Small feedforward projection dim
+  num_heads: 1          # Fewer heads to reduce param count
+  conv_kernel_size: 16   # Shorter receptive field
+  num_blocks: 1         # Single conformer block for now
+  dropout: 0.5          # The model is too powerful, punish it

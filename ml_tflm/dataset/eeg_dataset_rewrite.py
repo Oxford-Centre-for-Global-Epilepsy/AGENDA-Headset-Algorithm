@@ -6,7 +6,9 @@ import atexit
 from collections import Counter
 
 class EEGRecordingDatasetTF:
-    def __init__(self, h5_file_path, dataset_name, label_config, transform=None, omit_channels=None, subject_ids=None, mirror_flag=False):
+    def __init__(self, h5_file_path, dataset_name, label_config, 
+                 transform=None, omit_channels=None, subject_ids=None, mirror_flag=False, 
+                 chunk_size=None, deterministic_draw=False):
         # Initialize the dataset access
         self.h5_file_path = h5_file_path
         self.dataset_name = dataset_name
@@ -32,7 +34,12 @@ class EEGRecordingDatasetTF:
         first_subject = self.subject_ids[0]
         channel_names_raw = self.h5[self.dataset_name][first_subject].attrs["channel_names"]
         self.original_channel_names = [name.decode("utf-8") if isinstance(name, bytes) else name for name in channel_names_raw]
-        self.keep_indices = [i for i, ch in enumerate(self.original_channel_names) if ch not in self.omit_channels]
+
+        # Normalize channel name for comparison
+        def normalize(ch): return ch.upper().replace("EEG ", "").strip()
+
+        normalized_omit = set(normalize(ch) for ch in self.omit_channels)
+        self.keep_indices = [i for i, ch in enumerate(self.original_channel_names) if normalize(ch) not in normalized_omit]
         self.channel_names = [self.original_channel_names[i] for i in self.keep_indices]
 
         if mirror_flag:
@@ -52,6 +59,17 @@ class EEGRecordingDatasetTF:
         else:
             self.mirror_permu = None
 
+        self.chunk_size = chunk_size
+        # If chunk_size is set, override max_epochs
+        if chunk_size is not None:
+            self.max_epochs = chunk_size
+
+        # Method for stability in validation
+        if deterministic_draw and chunk_size is not None:
+            self.precompute_draws(k=chunk_size)
+        self.deterministic_draw = deterministic_draw
+
+
         shape_sample = self.__getitem__(0)
         self.output_signature = {
             "data": tf.TensorSpec(shape=shape_sample["data"].shape, dtype=tf.float32),
@@ -62,43 +80,57 @@ class EEGRecordingDatasetTF:
             "internal_label": tf.TensorSpec(shape=(), dtype=tf.int32),
         }
 
+        # Optional VERY HACKY trick
+        # self.recast_labels({3:0, 5:3, 4:3})
+
     def __len__(self):
         return len(self.sample_metadata)
 
     def __getitem__(self, idx): 
         subject = self.sample_metadata[idx]
-
         subject_id = subject["subject_id"]
         subj_group = self.h5[self.dataset_name][subject_id]
-        data = subj_group["data"][()]
 
+        full_n_epochs, n_channels, n_time = subj_group["data"].shape
+        k = self.chunk_size if self.chunk_size is not None else self.max_epochs
+
+        # === Select contiguous block ===
+        if full_n_epochs >= k:
+            if self.deterministic_draw and self.chunk_size is not None:
+                start = subject["start_index"]
+            else:
+                start = np.random.randint(0, full_n_epochs - k + 1)
+
+            data = subj_group["data"][start:start + k]
+            attention_mask = np.ones((k,), dtype=bool)
+
+        else:
+            # Load full data then pad
+            data = subj_group["data"][()]
+            pad = np.zeros((k - full_n_epochs, n_channels, n_time), dtype=np.float32)
+            data = np.concatenate([data, pad], axis=0)
+
+            attention_mask = np.zeros((k,), dtype=bool)
+            attention_mask[:full_n_epochs] = True
+
+        # === Channel selection ===
         if self.keep_indices:
             data = data[:, self.keep_indices, :]
 
+        # === Optional mirroring ===
         if subject["is_mirrored"] and self.mirror_permu is not None:
             data = data[:, self.mirror_permu, :]
 
-        # Load labels from the lookup list
+        # === Metadata ===
         labels = subject["labels"]
         label_mask = subject["label_mask"]
         internal_label = subject["internal_label"]
 
-        n_epochs, _, n_time = data.shape
-        data = data.astype(np.float32)
-        if n_epochs < self.max_epochs:
-            pad = np.zeros((self.max_epochs - n_epochs, data.shape[1], data.shape[2]), dtype=np.float32)
-            data = np.concatenate([data, pad], axis=0)
-        elif n_epochs > self.max_epochs:
-            data = data[:self.max_epochs]
-
-        attention_mask = np.zeros((self.max_epochs,), dtype=bool)
-        attention_mask[:min(n_epochs, self.max_epochs)] = True
-
         return {
-            "data": data,
+            "data": data.astype(np.float32),               # [k, C, T]
             "labels": labels,
             "label_mask": label_mask,
-            "attention_mask": attention_mask,
+            "attention_mask": attention_mask,              # [k]
             "subject_id": np.asarray(subject_id.encode("utf-8"), dtype=np.string_),
             "internal_label": np.int32(internal_label)
         }
@@ -108,6 +140,7 @@ class EEGRecordingDatasetTF:
 
         for sid in self.subject_ids:
             subj_group = self.h5[self.dataset_name][sid]
+
             labels = subj_group.attrs["class_labels"]
             if isinstance(labels[0], bytes):
                 labels = [l.decode("utf-8") for l in labels]
@@ -132,6 +165,36 @@ class EEGRecordingDatasetTF:
                 "internal_label": internal_label,
                 "is_mirrored": False
             })
+
+    def precompute_draws(self, k, seed=42, num_draws=2):
+        """
+        Precomputes multiple deterministic start indices per subject and replicates sample metadata.
+
+        Args:
+            k (int): Number of epochs per segment.
+            seed (int): Random seed for reproducibility.
+            num_draws (int): Number of segments to draw per subject.
+        """
+        rng = np.random.default_rng(seed)
+        new_metadata = []
+
+        for sample in self.sample_metadata:
+            sid = sample["subject_id"]
+            full_n_epochs = self.h5[self.dataset_name][sid]["data"].shape[0]
+
+            for draw_idx in range(num_draws):
+                if full_n_epochs >= k:
+                    start = rng.integers(0, full_n_epochs - k + 1)
+                else:
+                    start = 0  # Will be padded later
+
+                # Clone the sample and assign the draw
+                sample_copy = sample.copy()
+                sample_copy["start_index"] = start
+                sample_copy["replica_index"] = draw_idx  # optional, for debugging/traceability
+                new_metadata.append(sample_copy)
+
+        self.sample_metadata = new_metadata
 
     def extend_mirror(self):
         new_entries = []
@@ -167,6 +230,39 @@ class EEGRecordingDatasetTF:
 
         self.sample_metadata.extend(new_entries)
 
+    def recast_labels(self, new_index):
+        """
+        Recast internal labels using a new index mapping.
+
+        Args:
+            new_index (dict[int → int]): Mapping from old internal label to new internal label.
+                                        Subjects with internal labels not in the keys will be dropped.
+        """
+        updated_metadata = []
+
+        for subject in self.sample_metadata:
+            old_label = subject["internal_label"]
+
+            if old_label not in new_index:
+                continue  # Drop this subject
+
+            new_label = new_index[old_label]
+
+            try:
+                labels, label_mask = make_label_vector_from_internal_label(new_label)
+            except ValueError:
+                # Invalid new internal label — skip
+                continue
+
+            new_subject = subject.copy()
+            new_subject["internal_label"] = new_label
+            new_subject["labels"] = labels
+            new_subject["label_mask"] = label_mask
+
+            updated_metadata.append(new_subject)
+
+        self.sample_metadata = updated_metadata
+
     def generator(self):
         for i in range(len(self)):
             yield self.__getitem__(i)
@@ -194,7 +290,7 @@ class EEGRecordingDatasetTF:
 
         ds = tf.data.Dataset.range(len(self.sample_metadata))
         if shuffle:
-            ds = ds.shuffle(len(self.sample_metadata))
+            ds = ds.shuffle(len(self.sample_metadata), reshuffle_each_iteration=True)
         ds = ds.map(tf_getitem, num_parallel_calls=num_parallel_calls)
         ds = ds.batch(batch_size)
         ds = ds.prefetch(1)
@@ -227,6 +323,37 @@ class EEGRecordingDatasetTF:
 
         return dict(counter)
 
+def make_label_vector_from_internal_label(internal_label):
+    """
+    Construct hierarchical labels and mask for a known internal label.
+
+    Args:
+        internal_label (int): One of {0, 3, 4, 5}
+
+    Returns:
+        labels (np.ndarray): shape [3], int32
+        label_mask (np.ndarray): shape [3], bool
+    """
+    if internal_label == 0:
+        labels = np.array([0, -1, -1], dtype=np.int32)
+        mask = np.array([True, False, False], dtype=bool)
+
+    elif internal_label == 3:
+        labels = np.array([1, 3, -1], dtype=np.int32)
+        mask = np.array([True, True, False], dtype=bool)
+
+    elif internal_label == 4:
+        labels = np.array([1, 2, 4], dtype=np.int32)
+        mask = np.array([True, True, True], dtype=bool)
+
+    elif internal_label == 5:
+        labels = np.array([1, 2, 5], dtype=np.int32)
+        mask = np.array([True, True, True], dtype=bool)
+
+    else:
+        raise ValueError(f"Unsupported internal_label: {internal_label}")
+
+    return labels, mask
 
 if __name__ == "__main__":
     # === Example usage ===
@@ -237,14 +364,20 @@ if __name__ == "__main__":
     }
 
     dataset = EEGRecordingDatasetTF(
-        h5_file_path="ml_tflm/dataset/agenda_data_01/combined_south_africa_monopolar_standard_10_20.h5",
+        h5_file_path="ml_tflm/dataset/agenda_data_23_bp45_tr05/combined_south_africa_monopolar_standard_10_20.h5",
         dataset_name="combined_south_africa_monopolar_standard_10_20",
         label_config=label_config, 
-        mirror_flag=True
+        mirror_flag=False,
+        chunk_size=256, deterministic_draw=False
         )
 
     hist = dataset.get_label_histogram()
     print(hist)
 
+    # dataset.recast_labels({4: 0, 5:3})
+    # hist = dataset.get_label_histogram()
+    # print(hist)
+    # for idx in range(100):
+    #     print(dataset.sample_metadata[idx])
 
     dataset.close()

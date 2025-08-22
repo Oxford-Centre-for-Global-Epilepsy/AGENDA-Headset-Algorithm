@@ -1,9 +1,9 @@
 defaults:
-  - dataset: sample_balanced
+  - dataset: sample_refiltered
   - optimizer: adam
   - training: default
   - component/feature_extractor: EEGNet
-  - component/pooling_layer: GRUPooling
+  - component/pooling_layer: AveragePooling
   - component/classifier_head: Binary
   - _self_
 

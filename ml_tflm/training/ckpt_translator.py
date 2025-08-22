@@ -6,14 +6,12 @@ For the remaining conversion steps, please refer to the ~/model_conversion_facto
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-import hydra
-from omegaconf import DictConfig
 import tensorflow as tf
-from hydra.utils import instantiate
 import ml_tflm.training.train_utils as utils
+from ml_tflm.models_tf.classifier_QAT import EEGNetFlatClassifierQAT
 
-@hydra.main(config_path="configs", config_name="config", version_base=None)
-def main(cfg: DictConfig):
+
+def loadTrainedModel(save=False):
     """
     This script is intended only for converting .ckpt files into full models.
     For the rest of the conversion process, please refer to the ~/conversion directory.
@@ -22,57 +20,85 @@ def main(cfg: DictConfig):
     # --- Load label config (used for consistent model construction) ---
     label_config = utils.load_label_config("ml_tflm/training/label_map.JSON")
 
+    # --- define internal label cap ---
+    internal_label_cap = {
+        0: 450,
+        3: 260,
+        4: 94,
+        5: 96
+    }
+
     # --- Load dataset to infer shape ---
-    train_val_sets, _ = utils.load_eeg_datasets_split(
-        h5_file_path=cfg.dataset.h5_path,
-        dataset_name=cfg.dataset.name,
+    train_val_sets, _, label_histograms = utils.prepare_eeg_datasets(
+        h5_file_path="ml_tflm/dataset/agenda_data_23_bp45_tr05/merged_south_africa_monopolar_standard_10_20.h5",
+        dataset_name="combined_south_africa_monopolar_standard_10_20",
         label_config=label_config,
-        val_frac=cfg.training.val_frac,
-        test_frac=cfg.training.test_frac,
-        k_fold=cfg.training.k_fold
+        omit_channels=["A1","A2", "Fz", "Pz", "Cz"],
+        val_frac=0.2,
+        test_frac=0.0,
+        k_fold=False,
+        stratify=True,
+        internal_label_cap=internal_label_cap,
+        batch_size=32,
+        mirror_flag=False,
+        chunk_size=256
     )
-    train_dataset = train_val_sets[0][0]  # Only need one for shape
+
+    print(" -> Dataset Loaded")
+    print("     -> Loaded Dataset Contains:" + str(label_histograms))
+
+    train_dataset = train_val_sets[0][0]
 
     # --- Extract shape ---
     data_spec = train_dataset.element_spec["data"]
     _, E, C, T = data_spec.shape
 
-    # --- Instantiate model ---
-    eegnet_args = dict(cfg.architecture.model.eegnet_args)
-    eegnet_args["num_channels"] = C
-    eegnet_args["num_samples"] = T
-    eegnet_args["activation"] = getattr(tf.nn, eegnet_args["activation"])
+    # --- Resolve model args ---
+    eegnet_args = {
+        "num_channels": C,
+        "num_samples": T,
+        "F1": 16,
+        "D": 2,
+        "F2": 4,
+        "dropout_rate": 0.5,
+        "kernel_length": 64,   
+    }
+    head_args = {
+        "num_classes": 2,
+        "l2_weight": 0.0
+    }
 
-    pooling_args = dict(cfg.architecture.model.pooling_args)
-    pooling_args["activation"] = getattr(tf.nn, pooling_args["activation"])
-
-    model = instantiate(cfg.architecture.model, eegnet_args=eegnet_args, pooling_args=pooling_args)
+    model = EEGNetFlatClassifierQAT(eegnet_args, head_args)
 
     dummy_input = tf.zeros([1, 5, C, T])
     _ = model(dummy_input)
 
     # --- Restore from checkpoint ---
+    ckpt_dir = "ml_tflm/training/checkpoints_fold4"
+    ckpt_path = os.path.join(ckpt_dir, "ckpt-16")
+
     ckpt = tf.train.Checkpoint(model=model)
-    latest_ckpt = tf.train.latest_checkpoint(cfg.training.ckpt_load_dir)
-    if latest_ckpt:
-        ckpt.restore(latest_ckpt).expect_partial()
-        print(f"Restored checkpoint from {latest_ckpt}")
-    else:
-        raise FileNotFoundError(f"No checkpoint found in {cfg.training.ckpt_load_dir}")
+    ckpt.restore(ckpt_path).expect_partial()
+    print(f"Restored checkpoint from {ckpt_path}")
 
     # --- Save separated model components as .keras files ---
-    output_dir = "ml_tflm/model_conversion_factory/model_SPLIT"
+    if save:
+        output_dir = "ml_tflm/model_conversion_factory/model_SPLIT"
 
-    # Feature extractor (for embedded/edge use)
-    feature_path = os.path.join(output_dir, "model_FEATURE_EXTRACTOR.keras")
-    model.feature_extractor.save(feature_path, save_format="tf")
-    print(f"Feature extractor saved to {feature_path}")
+        # Feature extractor (for embedded/edge use)
+        feature_path = os.path.join(output_dir, "model_FEATURE_EXTRACTOR.keras")
+        #model.eegnet.save(feature_path, save_format="tf")
+        model.eegnet.save(feature_path)
 
-    # Classifier head (for mobile/host processing)
-    classifier_path = os.path.join(output_dir, "model_CLASSIFIER_HEAD.keras")
-    model.attention_classifier.save(classifier_path, save_format="tf")
-    print(f"Classifier head saved to {classifier_path}")
+        print(f"Feature extractor saved to {feature_path}")
+
+        # Classifier head (for mobile/host processing)
+        classifier_path = os.path.join(output_dir, "model_CLASSIFIER_HEAD.keras")
+        model.classifier.save(classifier_path, save_format="tf")
+        print(f"Classifier head saved to {classifier_path}")
+
+    return model.eegnet, model.classifier
 
 
 if __name__ == "__main__":
-    main()
+    loadTrainedModel(save=True)

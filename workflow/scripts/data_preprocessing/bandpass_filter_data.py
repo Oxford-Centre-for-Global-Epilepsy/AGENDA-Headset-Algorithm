@@ -21,7 +21,10 @@ def bandpass_filter(input_file, output_file, config_file):
     raw = mne.io.read_raw_edf(input_file, preload=True)
 
     # Apply bandpass filter
-    raw.filter(l_freq=low_cutoff, h_freq=high_cutoff, method=method, fir_design='firwin', fir_window='hamming')
+    raw.filter(l_freq=low_cutoff, h_freq=high_cutoff, method=method, fir_design='firwin', fir_window='hamming', h_trans_bandwidth=5.0)
+
+    # Apply narrow 50 Hz notch filter
+    # raw.notch_filter(freqs=50, notch_widths=0.5, trans_bandwidth=0.5, method='fir', fir_design='firwin', fir_window='hamming', phase='zero')
 
     # Save filtered data
     raw.save(output_file, overwrite=True)

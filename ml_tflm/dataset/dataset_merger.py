@@ -303,9 +303,9 @@ if __name__ == "__main__":
         "inverse_label_map": {0: "neurotypical", 1: "epileptic", 2: "focal", 3: "generalized", 4: "left", 5: "right"},
     }
 
-    dir_dsa = "ml_tflm/dataset/agenda_data_01/combined_south_africa_monopolar_standard_10_20.h5"
-    dir_dsb = "ml_tflm/dataset/agenda_data_02/combined_south_africa_monopolar_standard_10_20.h5"
-    dir_dsm = "ml_tflm/dataset/agenda_data_03/balanced_south_africa_monopolar_standard_10_20.h5"
+    dir_dsa = "ml_tflm/dataset/agenda_data_23_bp45_tr05/combined_south_africa_monopolar_standard_10_20.h5"
+    dir_dsb = "ml_tflm/dataset/agenda_data_nw_bp45_tr05/combined_south_africa_monopolar_standard_10_20.h5"
+    dir_dsm = "ml_tflm/dataset/agenda_data_23_bp45_tr05/merged_south_africa_monopolar_standard_10_20.h5"
 
     name_dsa = "combined_south_africa_monopolar_standard_10_20"
     name_dsb = "combined_south_africa_monopolar_standard_10_20"
@@ -347,7 +347,7 @@ if __name__ == "__main__":
         confirmed_duplicates=confirmed_dups,
         output_path=dir_dsm,
         output_dataset_name=name_dsm,
-        internal_label_cap={0: 120, 3: 120, 4: 100, 5: 100},
+        internal_label_cap=None,
         label_config=label_config
     )
 

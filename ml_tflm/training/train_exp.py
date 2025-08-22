@@ -23,6 +23,14 @@ import json
 from pathlib import Path
 import numpy as np
 
+# seed = 42
+
+# # Set Python, NumPy, and TensorFlow seeds
+# import random
+# random.seed(seed)
+# np.random.seed(seed)
+# tf.random.set_seed(seed)
+
 
 def to_serializable(obj):
     if isinstance(obj, dict):
@@ -65,6 +73,7 @@ def main(cfg: DictConfig):
         internal_label_cap=internal_label_cap,
         batch_size=cfg.training.batch_sz,
         mirror_flag=cfg.training.mirror_flag,
+        chunk_size=cfg.training.chunk_size
     )
     
     print(" -> Dataset Loaded")
@@ -73,6 +82,7 @@ def main(cfg: DictConfig):
 
     # --- Define metric holder ---
     train_metrics = []
+    train_history = {}
 
     for fold_idx in range(len(train_val_sets)):
         train_val_set = train_val_sets[fold_idx]
@@ -91,6 +101,8 @@ def main(cfg: DictConfig):
         # --- Get EEGNet shape info ---
         data_spec = train_dataset.element_spec["data"]
         _, E, C, T = data_spec.shape
+
+        print(E, C, T)
 
         # --- Resolve model args ---
         eegnet_args = dict(cfg.component.feature_extractor.eegnet)
@@ -128,6 +140,7 @@ def main(cfg: DictConfig):
             evaluator=evaluator,
             train_dataset=train_dataset,
             val_dataset=val_dataset,
+            test_dataset=test_dataset,
             model_input_lookup=cfg.component.feature_extractor.model_input_lookup,
             model_target_lookup=cfg.component.classifier_head.model_target_lookup,
             save_ckpt=cfg.training.save_ckpt,
@@ -150,6 +163,7 @@ def main(cfg: DictConfig):
         )
 
         train_metrics.append(trainer.get_metrics())
+        train_history[fold_idx] = trainer.get_metrics(mode="all")
 
     # Prepare directory
     save_path = cfg.training.metric_save_dir
@@ -157,6 +171,10 @@ def main(cfg: DictConfig):
 
     # Find best result (highest macro F1)
     best_result = max(train_metrics, key=lambda d: d.get("f1", -1))
+
+    # Append all history
+    best_result["history"] = {k: utils.clean_metrics(v) for k, v in train_history.items()}
+    print(train_history)
 
     # Dump result in a JSON-safe way
     with open(save_path, "w") as f:

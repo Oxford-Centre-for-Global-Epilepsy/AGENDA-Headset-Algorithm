@@ -39,8 +39,7 @@ class EEGNet(tf.keras.Model):
             temporal_type (string): Name of the temporal convolution block type.
             bottleneck_dim (int or None): If set, adds a dense bottleneck layer of this size.
             activation (function): Activation function to use (e.g., tf.nn.elu).
-            norm_layer (callable or None): A normalization layer constructor (e.g., tf.keras.layers.LayerNormalization).
-                                            If None, no normalization is applied.
+            norm_layer (string or None): A normalization layer argument.
             l2_weight (float): L2 regularization weight. Set < 0 to disable.
         """
         super().__init__()
@@ -52,7 +51,7 @@ class EEGNet(tf.keras.Model):
         if temporal_type == 'vanilla':
             self.firstconv = models.Sequential([
                 layers.Conv2D(F1, (1, kernel_length), padding='same', use_bias=False),
-                norm_layer() if norm_layer is not None else layers.Lambda(lambda x: x)
+                NORM_REGISTRY[norm_layer]() if norm_layer is not None else layers.Lambda(lambda x: x)
             ])
         elif temporal_type == 'multiscale':
             dilation_rates = [1, 2, 4, 8]
@@ -64,7 +63,7 @@ class EEGNet(tf.keras.Model):
                                        kernel_size=(1, kernel_length),
                                        dilation_rates=dilation_rates,
                                        activation=activation),
-                norm_layer() if norm_layer is not None else layers.Lambda(lambda x: x)
+                NORM_REGISTRY[norm_layer]() if norm_layer is not None else layers.Lambda(lambda x: x)
             ])
         else:
             raise ValueError(f"Unknown temporal_type: {temporal_type}")
@@ -72,16 +71,26 @@ class EEGNet(tf.keras.Model):
         # Spatial filtering block using depthwise convolution
         self.depthwiseConv = models.Sequential([
             layers.DepthwiseConv2D((num_channels, 1), depth_multiplier=D, use_bias=False),
-            norm_layer() if norm_layer is not None else layers.Lambda(lambda x: x),
+            NORM_REGISTRY[norm_layer]() if norm_layer is not None else layers.Lambda(lambda x: x),
             layers.Activation(self.activation),
             layers.AveragePooling2D((1, 4)),  # Downsample time dimension
             layers.Dropout(dropout_rate)
         ])
 
+        # Replace spatial filtering with average pooling across channels
+        # self.depthwiseConv = models.Sequential([
+        #     layers.Lambda(lambda x: tf.reduce_mean(x, axis=1, keepdims=True)),  # [B, C, T, 1] -> [B, 1, T, 1]
+        #     NORM_REGISTRY[norm_layer]() if norm_layer is not None else layers.Lambda(lambda x: x),
+        #     layers.Activation(self.activation),
+        #     layers.AveragePooling2D((1, 4)),  # Downsample time dimension
+        #     layers.Dropout(dropout_rate)
+        # ])
+
+
         # Separable convolution block (pointwise conv after spatial)
         self.separableConv = models.Sequential([
             layers.SeparableConv2D(F2, (1, 16), padding='same', use_bias=False),
-            norm_layer() if norm_layer is not None else layers.Lambda(lambda x: x),
+            NORM_REGISTRY[norm_layer]() if norm_layer is not None else layers.Lambda(lambda x: x),
             layers.Activation(self.activation),
             layers.AveragePooling2D((1, 8)),  # Further downsampling
             layers.Dropout(dropout_rate)
@@ -200,6 +209,11 @@ class MultiScaleTemporalConv(tf.keras.layers.Layer):
 
         # Normalize concatenated output
         return self.norm(x_cat)
+
+NORM_REGISTRY = {
+    "BATCH": tf.keras.layers.BatchNormalization,
+    "LAYER": tf.keras.layers.LayerNormalization
+}
 
 if __name__ == "__main__":
     # Define dummy input shape: batch of 2 samples, 21 EEG channels, 128 time points, 1 feature per channel

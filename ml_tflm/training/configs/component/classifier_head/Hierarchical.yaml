@@ -15,3 +15,4 @@ evaluator:
 model_target_lookup:
   targets: labels
   label_mask: label_mask
+  entropy_targets: internal_label

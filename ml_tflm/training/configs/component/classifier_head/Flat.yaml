@@ -7,7 +7,7 @@ loss:
   _target_: ml_tflm.training.loss.StructureAwareLoss
 
   clip_value: 10.0
-  temperature: 0.1
+  temperature: 0.3
 
   dist_1_2: 0.4
   dist_2_2: 0.2
@@ -19,3 +19,4 @@ evaluator:
 
 model_target_lookup:
   targets: internal_label
+  entropy_targets: internal_label

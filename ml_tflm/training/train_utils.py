@@ -138,6 +138,7 @@ def prepare_eeg_datasets(
     shuffle: bool = True,
     mirror_flag: bool = False,
     internal_label_cap: Optional[Dict[str, int]] = None,
+    chunk_size: Optional[int] = None
 ) -> Tuple[List[Tuple[tf.data.Dataset, tf.data.Dataset]], Optional[tf.data.Dataset], List[dict]]:
     """
     Prepares EEG datasets by splitting subject metadata and generating tf.data.Dataset objects.
@@ -221,6 +222,7 @@ def prepare_eeg_datasets(
         mirror_flag=mirror_flag,
         batch_size=batch_size,
         shuffle=shuffle,
+        chunk_size=chunk_size
     )
 
     return train_val_sets, test_dataset, label_histograms
@@ -285,6 +287,8 @@ def generate_tf_datasets(
     mirror_flag: bool = False,
     batch_size: int = 1,
     shuffle: bool = True,
+    chunk_size: Optional[int] = None
+
 ) -> Tuple[List[Tuple[tf.data.Dataset, tf.data.Dataset]], Optional[tf.data.Dataset], List[dict]]:
     """
     Generates TensorFlow datasets from subject ID splits.
@@ -294,11 +298,11 @@ def generate_tf_datasets(
 
     for train_ids, val_ids in zip(train_id_lists, val_id_lists):
         train_gen = _make_tf_generator(train_ids, h5_file_path, dataset_name,
-                                       label_config, omit_channels, mirror_flag=mirror_flag)
+                                       label_config, omit_channels, mirror_flag=mirror_flag, chunk_size=chunk_size)
         val_gen = _make_tf_generator(val_ids, h5_file_path, dataset_name,
-                                     label_config, omit_channels)
+                                     label_config, omit_channels, chunk_size=chunk_size, deterministic_draw=True)
 
-        train_dataset = train_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
+        train_dataset = train_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1).repeat()
         val_dataset = val_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
 
         train_val_sets.append((train_dataset, val_dataset))
@@ -307,20 +311,23 @@ def generate_tf_datasets(
     # Test dataset
     test_dataset = None
     if test_ids:
+        # The test set will always be full (un-truncated) recordings
         test_gen = _make_tf_generator(test_ids, h5_file_path, dataset_name,
-                                      label_config, omit_channels)
-        test_dataset = test_gen.get_tf_dataset(batch_size=batch_size, shuffle=shuffle, num_parallel_calls=1)
+                                      label_config, omit_channels, chunk_size=None)
+        test_dataset = test_gen.get_tf_dataset(batch_size=1, shuffle=shuffle, num_parallel_calls=1)
 
     return train_val_sets, test_dataset, label_histograms
 
-def _make_tf_generator(subject_ids, h5_file_path, dataset_name, label_config, omit_channels, mirror_flag=False):
+def _make_tf_generator(subject_ids, h5_file_path, dataset_name, label_config, omit_channels, mirror_flag=False, chunk_size=None, deterministic_draw=False):
     generator = EEGRecordingDatasetTF(
         h5_file_path=h5_file_path,
         dataset_name=dataset_name,
         label_config=label_config,
         omit_channels=omit_channels,
         subject_ids=subject_ids,
-        mirror_flag=mirror_flag
+        mirror_flag=mirror_flag,
+        chunk_size=chunk_size,
+        deterministic_draw=deterministic_draw
     )
     return generator
 
@@ -372,6 +379,21 @@ def compute_label_histogram(dataset, label_map_config):
             counter[label_str] += 1
 
     return dict(counter)
+
+def clean_metrics(metrics):
+    if isinstance(metrics, list):
+        return [clean_metrics(m) for m in metrics]
+    elif isinstance(metrics, dict):
+        return {
+            k: (
+                v.tolist() if isinstance(v, np.ndarray)
+                else [float(x) for x in v] if isinstance(v, list) and all(isinstance(x, (np.floating, np.float32, np.float64)) for x in v)
+                else float(v) if isinstance(v, (np.floating, np.float32, np.float64))
+                else v
+            )
+            for k, v in metrics.items()
+        }
+    return metrics
 
 def get_activation(name):
     return {

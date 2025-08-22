@@ -7,5 +7,6 @@ pool:
 loss:
   _target_: ml_tflm.training.loss.ConditionalEntropyLoss
 
+  num_heads: 2
   label_to_heads: {3: [0], 4: [1], 5: [1]}
   lambda_entropy: 0.01

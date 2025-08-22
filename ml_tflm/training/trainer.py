@@ -5,6 +5,7 @@ from ml_tflm.training.loss import ConditionalEntropyLoss
 import numpy as np
 
 from tqdm import tqdm
+from sklearn.metrics import roc_auc_score
 
 # import warnings
 # warnings.filterwarnings("ignore", message="Gradients do not exist for variables.*")
@@ -52,7 +53,7 @@ class Trainer:
         if save_ckpt:
             self.ckpt_interval = ckpt_interval
             self.ckpt_save_dir = ckpt_save_dir
-            self.ckpt_manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_save_dir, max_to_keep=5)
+            self.ckpt_manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_save_dir, max_to_keep=40)
 
         self.metric_history = []
 
@@ -101,18 +102,18 @@ class Trainer:
 
             # === Add attention entropy regularization if applicable ===
             if "attention_weights" in outputs and self.attention_loss is not None:
-                entropy_penalty = self.attention_loss(y_true=model_targets["targets"], y_pred=outputs["attention_weights"])
+                entropy_penalty = self.attention_loss(y_true=model_targets["entropy_targets"], y_pred=outputs["attention_weights"])
                 loss += entropy_penalty
 
         grads = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
         self.train_loss_metric.update_state(loss)
 
-    def run_validation(self, collect_outputs=True, verbose=False):
+    def run_validation(self, dataset, collect_outputs=True, verbose=False):
         all_preds, all_targets = [], []
         attention_entropies, attention_means = [], []
 
-        val_iter = enumerate(self.val_dataset)
+        val_iter = enumerate(dataset)
         if verbose:
             val_iter = tqdm(val_iter, desc="Validation")
 
@@ -137,7 +138,7 @@ class Trainer:
                 # === Add attention entropy regularization if applicable ===
                 if "attention_weights" in outputs and self.attention_loss is not None:
                     entropy_penalty = self.attention_loss(
-                        y_true=model_targets["targets"],
+                        y_true=model_targets["entropy_targets"],
                         y_pred=outputs["attention_weights"]
                     )
                     loss += entropy_penalty
@@ -190,6 +191,23 @@ class Trainer:
                 results["attention_entropy_mean"] = [float(np.mean(h)) for h in attention_entropies]
                 results["attention_entropy_std"] = [float(np.std(h)) for h in attention_entropies]
 
+            # === Compute AUC if logits are 2D with 2 classes ===
+            sample_output = all_preds[0]
+            if isinstance(sample_output, dict) and "logits" in sample_output:
+                logits = [o["logits"] for o in all_preds]  # list of [B, 2]
+            else:
+                logits = all_preds  # assume raw logits
+
+            logits = tf.concat(logits, axis=0)  # [N, C]
+
+            if logits.shape.rank == 2 and logits.shape[-1] == 2:
+                probs = tf.nn.softmax(logits, axis=-1)  # [N, 2]
+                pos_scores = probs[:, 1].numpy()  # Positive class probability
+
+                # Convert targets: 0 → 0, all others → 1
+                bin_targets = [0 if t == 0 else 1 for t in all_targets]
+                results["auc"] = float(roc_auc_score(bin_targets, pos_scores))
+
             return results
         else:
             return {}
@@ -225,14 +243,20 @@ class Trainer:
                     continue
 
 
-            metrics = self.run_validation(collect_outputs=True, verbose=True)
+            metrics = self.run_validation(self.val_dataset, collect_outputs=True, verbose=True)
 
             print(f"Train Loss = {self.train_loss_metric.result():.4f}, "
                 f"Val Loss = {self.val_loss_metric.result():.4f}")
 
-            # Printing Metrics
+            # Printing validation metrics
             class_labels = ["neurotypical", "generalized", "left", "right"]
             print_validation_results(metrics, class_labels=class_labels)
+
+            # Optionally run test set evaluation
+            if self.test_dataset is not None:
+                test_metrics = self.run_validation(self.test_dataset, collect_outputs=True, verbose=True)
+                print("[Test Set Evaluation]")
+                print_validation_results(test_metrics, class_labels=class_labels)
 
             # Save checkpoint
             if self.ckpt_manager and (epoch % self.ckpt_interval == 0):
@@ -242,15 +266,16 @@ class Trainer:
             # Log metrics
             self.metric_history.append({
                 "val_loss": self.val_loss_metric.result().numpy(),
-                **metrics
+                **metrics,
+                **({"test_" + k: v for k, v in test_metrics.items()} if self.test_dataset is not None else {})
             })
 
+            # Compare and print weight updates
             new_weights = {
                 "feature_extractor": [tf.identity(w) for w in self.model.eegnet.trainable_variables],
                 "pool": [tf.identity(w) for w in self.model.pool.trainable_variables],
                 "classifier": [tf.identity(w) for w in self.model.classifier.trainable_variables],
             }
-
             print_weight_updates(old_weights, new_weights)
 
             # Anneal the loss function if necessary

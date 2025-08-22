@@ -1,17 +1,19 @@
 val_frac: 0.2
-test_frac: 0.0
+test_frac: 0.15
 k_fold: False
 stratify: True
 internal_label_cap_keys: [0,3,4,5]
-internal_label_cap_values: [240,120,60,60]
+# internal_label_cap_values: [240,120,60,60]
+internal_label_cap_values: [450, 260, 94, 96]
 class_balance: True
 
 mirror_flag: False
 
-batch_sz: 1
+batch_sz: 32
+chunk_size: 256
 
 epochs: 20
-steps_per_epoch: 240
+steps_per_epoch: 100
 
 attention_warmup_epoch: 0
 

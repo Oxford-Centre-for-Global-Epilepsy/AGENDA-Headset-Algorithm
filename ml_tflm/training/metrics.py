@@ -49,10 +49,10 @@ class metric_evaluator():
         target_valid = target_indices[valid_mask]
 
         return {
-            "f1": f1_score(target_valid, pred_valid, average="binary", zero_division=0),
+            "f1": f1_score(target_valid, pred_valid, average="macro", zero_division=0),
             "accuracy": accuracy_score(target_valid, pred_valid),
-            "precision": precision_score(target_valid, pred_valid, average="binary", zero_division=0),
-            "recall": recall_score(target_valid, pred_valid, average="binary", zero_division=0),
+            "precision": precision_score(target_valid, pred_valid, average="macro", zero_division=0),
+            "recall": recall_score(target_valid, pred_valid, average="macro", zero_division=0),
             "confusion_matrix": confusion_matrix(target_valid, pred_valid)
         }
 

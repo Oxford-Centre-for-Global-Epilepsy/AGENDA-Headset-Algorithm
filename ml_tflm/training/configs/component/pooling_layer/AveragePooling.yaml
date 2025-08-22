@@ -1,9 +1,3 @@
 pool:
   scorer: AVG
   num_heads: 1
-
-loss:
-  _target_: ml_tflm.training.loss.ConditionalEntropyLoss
-
-  label_to_heads: {3: [0], 4: [0], 5: [0]}
-  lambda_entropy: 0.0

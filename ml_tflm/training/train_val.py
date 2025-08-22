@@ -25,6 +25,7 @@ def run_trial(trial_number, override_list, param_dict):
 
     override_list += [
         "training.epochs=20",
+        "training.steps_per_epoch=100",
         "training.save_ckpt=false",
         "training.k_fold=true",
         f"training.metric_save_dir={metric_path.replace(os.sep, '/')}"
@@ -69,26 +70,36 @@ def run_trial(trial_number, override_list, param_dict):
     return score
 
 if __name__ == "__main__":
-    # Only test ablation
-    ablation_options = [None, ["A1", "A2"], ["T3", "T4"], ["Fp1", "Fp2"]]
+    trial_configs = [
+        {"pooling_layer": "AveragePooling", "ablation": ["A1","A2","Fz","Pz","Cz"]},
+        {"pooling_layer": "AveragePooling", "ablation": None},
+        #{"pooling_layer": "SingleAttentionPooling", "ablation": ["A1","A2","Fz","Pz","Cz"]},
+        #{"pooling_layer": "AblationPooling", "ablation": ["A1","A2","Fz","Pz","Cz"]},
+    ]
 
-    best_score = float("inf")
-    best_params = None
+    for i, config in enumerate(trial_configs):
+        pooling_override = f"component/pooling_layer={config['pooling_layer']}"
+        ablation_override = f"dataset.ablation={config['ablation']}"
+        overrides = [pooling_override, ablation_override]
 
-    for i, ablation in enumerate(ablation_options):
-        ablation_override = (
-            f"dataset.ablation={ablation}"
-            if ablation is not None else "dataset.ablation=null"
-        )
-        overrides = [ablation_override,]
-        params = {
-            "ablation": ablation
-        }
-        score = run_trial(i, overrides, params)
-        if score < best_score:
-            best_score = score
-            best_params = params
+        print(f"\n=== Trial {i} ===")
+        print(f"Pooling: {config['pooling_layer']}, Ablation: {config['ablation']}")
+        run_trial(i, overrides, config)
 
-    print("\n=== Ablation Sweep Complete ===")
-    print("Best parameters:", best_params)
-    print("Best validation score:", best_score)
+    print("\n=== All Trials Complete ===")
+
+    # trial_configs = [
+    #     {"name": "bp40_tr05", "dataset.h5_path": "ml_tflm/dataset/agenda_data_nw_bp45_tr05/combined_south_africa_monopolar_standard_10_20.h5"},
+    #     {"name": "bp50", "dataset.h5_path": "ml_tflm/dataset/agenda_data_nw_bp50/combined_south_africa_monopolar_standard_10_20.h5"},
+    #     {"name": "bp50_nt50", "dataset.h5_path": "ml_tflm/dataset/agenda_data_nw_bp50_nt50/combined_south_africa_monopolar_standard_10_20.h5"},
+    # ]
+
+    # for i, config in enumerate(trial_configs):
+    #     h5_override = f"dataset.h5_path={config['dataset.h5_path']}"
+    #     overrides = [h5_override]
+
+    #     print(f"\n=== Trial {i} ({config['name']}) ===")
+    #     print(f"Dataset path: {config['dataset.h5_path']}")
+    #     run_trial(i, overrides, config)
+
+    # print("\n=== All Trials Complete ===")

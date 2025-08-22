@@ -16,31 +16,12 @@ def cast_prediction_flat(output_list, return_hierarchical=False):
     if not return_hierarchical:
         return flat_pred
 
-    flat_probs = tf.nn.softmax(logits_batch, axis=1)
-
-    # Probabilities from flat classifier: [neurotypical, generalized, focal-left, focal-right]
-    p_neurotypical = flat_probs[:, 0]
-    p_generalized = flat_probs[:, 1]
-    p_focal_left = flat_probs[:, 2]
-    p_focal_right = flat_probs[:, 3]
-
-    # Normalize within each decision node
-    p_focal_total = p_focal_left + p_focal_right + 1e-8
-    p_focal_left_norm = p_focal_left / p_focal_total
-    p_focal_right_norm = p_focal_right / p_focal_total
-
-    p_epileptic_total = p_generalized + p_focal_total
-    p_generalized_norm = p_generalized / (p_epileptic_total + 1e-8)
-    p_focal_norm = p_focal_total / (p_epileptic_total + 1e-8)
-
-    p_level1_total = p_neurotypical + p_epileptic_total
-    p_neurotypical_norm = p_neurotypical / (p_level1_total + 1e-8)
-    p_epileptic_norm = p_epileptic_total / (p_level1_total + 1e-8)
-
-    # Walk the hierarchy top-down to predict each level
-    level1_pred = tf.cast(p_epileptic_norm > p_neurotypical_norm, tf.int32)
-    level2_pred = tf.cast(p_generalized_norm > p_focal_norm, tf.int32)
-    level3_pred = tf.cast(p_focal_right_norm > p_focal_left_norm, tf.int32)
+    # Directly derive hierarchical predictions from flat class prediction
+    # Class mapping: 0=neurotypical, 1=generalized, 2=left focal, 3=right focal
+    level1_pred = tf.cast(flat_pred > 0, tf.int32)  # Epileptic (1) if class > 0
+    level2_pred = tf.where(flat_pred == 1, 0,       # Generalized (0) if class == 1
+                        tf.where(flat_pred == 0, 0, 1))  # Focal (1) if class in {2,3}
+    level3_pred = tf.cast(flat_pred == 3, tf.int32)  # Right (1) if class == 3, else Left (0)
 
     return level1_pred, level2_pred, level3_pred
 

@@ -1,6 +1,6 @@
 bandpass:
   low_cutoff: 0.5     # Low cutoff frequency in Hz
-  high_cutoff: 49.0   # High cutoff frequency in Hz
+  high_cutoff: 45.0   # High cutoff frequency in Hz
   method: "fir"       # 'fir' or 'iir' for filter type
 
 sampling_frequency: 128
