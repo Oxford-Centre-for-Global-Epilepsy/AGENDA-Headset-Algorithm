@@ -71,10 +71,12 @@ def run_trial(trial_number, override_list, param_dict):
 
 if __name__ == "__main__":
     trial_configs = [
-        {"pooling_layer": "AveragePooling", "ablation": ["A1","A2","Fz","Pz","Cz"]},
-        {"pooling_layer": "AveragePooling", "ablation": None},
-        #{"pooling_layer": "SingleAttentionPooling", "ablation": ["A1","A2","Fz","Pz","Cz"]},
-        #{"pooling_layer": "AblationPooling", "ablation": ["A1","A2","Fz","Pz","Cz"]},
+        #{"pooling_layer": "AveragePooling", "ablation": ["A1","A2","Fz","Pz","Cz"]},
+        #{"pooling_layer": "AveragePooling", "ablation": None},
+        #{"pooling_layer": "SingleAttentionPooling", "ablation": ["A1","A2","Fz","Pz","Cz"], "entropy_loss": 0.01},
+        #{"pooling_layer": "SingleAttentionPooling", "ablation": ["A1","A2","Fz","Pz","Cz"], "entropy_loss": 0.001},
+        #{"pooling_layer": "SingleAttentionPooling", "ablation": ["A1","A2","Fz","Pz","Cz"], "entropy_loss": 0.00},
+        {"pooling_layer": "AblationPooling", "ablation": ["A1","A2","Fz","Pz","Cz"]},
     ]
 
     for i, config in enumerate(trial_configs):

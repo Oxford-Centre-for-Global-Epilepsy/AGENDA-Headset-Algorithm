@@ -1,4 +1,4 @@
 pool:
   scorer: Ablation
-  keep_ratio: 0.1
+  keep_ratio: 0.01
   num_heads: 1

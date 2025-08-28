@@ -22,3 +22,6 @@ This folder contains relevant codes for training, and configuration files for th
 - **cast_prediction.py**: this script contains casters that interprets the output of model (often logits) into classification labels
 - **train_utils.py**: this script contains utility functions that assists the training scripts
 
+## configs
+
+*For more information regarding configurations, please refer to the documentation within folder "/configs"*

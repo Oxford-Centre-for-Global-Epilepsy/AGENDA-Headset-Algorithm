@@ -14,7 +14,6 @@ tf.config.optimizer.set_experimental_options({
 from ml_tflm.training.trainer import Trainer
 import ml_tflm.training.train_utils as utils
 
-from ml_tflm.dataset.eeg_dataset_tfrecord import load_dataset_meta_or_infer, load_eeg_tfrecord_dataset
 from hydra.utils import instantiate
 
 from ml_tflm.models_tf.eegnet_stack import EEGNetStack
